@@ -19,15 +19,26 @@ class SaleController extends Controller
         // Start with base query
         $query = Sale::with('items.product', 'payments');
         
-        // Apply filters only when explicitly specified with timezone awareness
-        if ($request->filled('start_date')) {
-            $startDate = \Carbon\Carbon::parse($request->start_date, 'Africa/Blantyre')->startOfDay()->setTimezone('UTC');
-            $query->where('created_at', '>=', $startDate);
-        }
+        $period = $request->input('period', 'all');
         
-        if ($request->filled('end_date')) {
-            $endDate = \Carbon\Carbon::parse($request->end_date, 'Africa/Blantyre')->endOfDay()->setTimezone('UTC');
-            $query->where('created_at', '<=', $endDate);
+        // Prioritize custom date range if provided
+        if ($request->filled('start_date') || $request->filled('end_date')) {
+            if ($request->filled('start_date')) {
+                $startDate = \Carbon\Carbon::parse($request->start_date)->startOfDay();
+                $query->where('created_at', '>=', $startDate);
+            }
+            if ($request->filled('end_date')) {
+                $endDate = \Carbon\Carbon::parse($request->end_date)->endOfDay();
+                $query->where('created_at', '<=', $endDate);
+            }
+        } else {
+            // Otherwise apply period filter
+            [$periodStart, $periodEnd] = $this->resolvePeriodDates($period);
+            
+            if ($periodStart && $periodEnd) {
+                $query->where('created_at', '>=', $periodStart)
+                      ->where('created_at', '<=', $periodEnd);
+            }
         }
         
         if ($request->filled('payment_method')) {
@@ -59,7 +70,8 @@ class SaleController extends Controller
         $sales = $query->latest()->paginate(15);
         
         // Calculate summary from paginated sales
-        $summary = $this->calculateSalesSummary($sales->getCollection(), $request);
+        // Calculate summary using the same logic as the query
+        $summary = $this->calculateSalesSummary($sales->getCollection(), $request, $period);
         
         // Get all users for filter dropdown
         $users = User::orderBy('name')->get();
@@ -70,46 +82,71 @@ class SaleController extends Controller
         return view('pos.sales', compact('sales', 'summary', 'users', 'registers'));
     }
     
-    private function calculateSalesSummary($sales, $request)
+    private function calculateSalesSummary($sales, $request, $period = 'all')
     {
         $summary = [];
         
-        // Get payment data directly from payments table - single source of truth
-        $query = \App\Models\Payment::query();
+        // Start with base query for sales totals
+        $query = \App\Models\Sale::query();
         
-        // Apply the same date filters as applied to sales
-        if ($request->filled('start_date')) {
-            $startDateTime = \Carbon\Carbon::parse($request->start_date, 'Africa/Blantyre')->startOfDay()->setTimezone('UTC');
-            $query->where('created_at', '>=', $startDateTime);
+        // Prioritize custom date range for summary (must match index filtering)
+        if ($request->filled('start_date') || $request->filled('end_date')) {
+            if ($request->filled('start_date')) {
+                $startDateTime = \Carbon\Carbon::parse($request->start_date)->startOfDay();
+                $query->where('created_at', '>=', $startDateTime);
+            }
+            
+            if ($request->filled('end_date')) {
+                $endDateTime = \Carbon\Carbon::parse($request->end_date)->endOfDay();
+                $query->where('created_at', '<=', $endDateTime);
+            }
+        } elseif ($request->filled('period') || $period) {
+            $periodToUse = $request->input('period', $period);
+            [$periodStart, $periodEnd] = $this->resolvePeriodDates($periodToUse);
+            if ($periodStart && $periodEnd) {
+                $query->where('created_at', '>=', $periodStart)
+                      ->where('created_at', '<=', $periodEnd);
+            }
         }
         
-        if ($request->filled('end_date')) {
-            $endDateTime = \Carbon\Carbon::parse($request->end_date, 'Africa/Blantyre')->endOfDay()->setTimezone('UTC');
-            $query->where('created_at', '<=', $endDateTime);
-        }
-        
-        // Apply payment method filter if specified
+        // Apply same filters as the main query
         if ($request->filled('payment_method')) {
-            $query->where('method', $request->payment_method);
+            $query->where('payment_method', $request->payment_method);
         }
         
-        // Get payments within the same date range
-        $payments = $query->get();
+        if ($request->filled('search')) {
+            $searchTerm = $request->search;
+            $query->where(function($q) use ($searchTerm) {
+                $q->where('invoice_no', 'LIKE', "%{$searchTerm}%")
+                  ->orWhere('customer_name', 'LIKE', "%{$searchTerm}%");
+            });
+        }
+        
+        // Get all filtered sales for summary
+        $filteredSales = $query->get();
         
         if ($request->filled('payment_method')) {
             // Filtered summary for specific payment method
-            $summary['filtered_count'] = $payments->count();
-            $summary['filtered_total'] = $payments->sum('amount');
+            $summary['filtered_count'] = $filteredSales->count();
+            $summary['filtered_total'] = $filteredSales->sum('total_amount');
+            
+            // Still need the structure for the view loop if necessary
+            $summary['payment_methods'] = [
+                $request->payment_method => [
+                    'count' => $filteredSales->count(),
+                    'total' => $filteredSales->sum('total_amount')
+                ]
+            ];
         } else {
-            // Summary for all payment methods using payments table
+            // Summary for all payment methods using sales table
             $paymentMethods = PaymentMethods::getAllMethods();
             
             $paymentSummary = [];
             foreach ($paymentMethods as $method) {
-                $methodPayments = $payments->where('method', $method);
+                $methodSales = $filteredSales->where('payment_method', $method);
                 $paymentSummary[$method] = [
-                    'count' => $methodPayments->count(),
-                    'total' => $methodPayments->sum('amount')
+                    'count' => $methodSales->count(),
+                    'total' => $methodSales->sum('total_amount')
                 ];
             }
             
@@ -117,6 +154,57 @@ class SaleController extends Controller
         }
         
         return $summary;
+    }
+
+    private function resolvePeriodDates($period)
+    {
+        $today = \Carbon\Carbon::now();
+        switch ($period) {
+            case 'all':
+                return [null, null];
+            case 'today':
+                return [
+                    $today->copy()->startOfDay(),
+                    $today->copy()->endOfDay(),
+                ];
+            case 'yesterday':
+                return [
+                    $today->copy()->subDay()->startOfDay(),
+                    $today->copy()->subDay()->endOfDay(),
+                ];
+            case 'this_week':
+                return [
+                    $today->copy()->startOfWeek(),
+                    $today->copy()->endOfWeek(),
+                ];
+            case 'last_week':
+                return [
+                    $today->copy()->subWeek()->startOfWeek(),
+                    $today->copy()->subWeek()->endOfWeek(),
+                ];
+            case 'this_month':
+                return [
+                    $today->copy()->startOfMonth(),
+                    $today->copy()->endOfMonth(),
+                ];
+            case 'last_month':
+                return [
+                    $today->copy()->subMonth()->startOfMonth(),
+                    $today->copy()->subMonth()->endOfMonth(),
+                ];
+            case 'this_year':
+                return [
+                    $today->copy()->startOfYear(),
+                    $today->copy()->endOfYear(),
+                ];
+            case 'last_year':
+                return [
+                    $today->copy()->subYear()->startOfYear(),
+                    $today->copy()->subYear()->endOfYear(),
+                ];
+            default:
+                return [null, null];
+        }
     }
 
     public function create()
@@ -161,6 +249,13 @@ class SaleController extends Controller
                 $product->save();
             }
         }
+
+        // Create payment record (Crucial for summary accuracy)
+        Payment::create([
+            'sale_id' => $sale->id,
+            'method' => $data['payment_method'] ?? 'cash',
+            'amount' => $data['total_paid'] ?? $data['total_amount']
+        ]);
 
         return redirect()->route('sales.show', $sale->id);
     }

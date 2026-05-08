@@ -52,6 +52,9 @@ class DashboardController extends Controller
             $data[] = $daySales ? $daySales->total : 0;
         }
         
+        // Calculate low stock items
+        $lowStockItems = Product::whereColumn('current_stock', '<=', 'alert_quantity')->count();
+        
         return view('pos.dashboard', compact(
             'totalSales',
             'netSales', 
@@ -62,6 +65,7 @@ class DashboardController extends Controller
             'purchaseReturn',
             'expense',
             'expiryItems',
+            'lowStockItems',
             'labels',
             'data'
         ));

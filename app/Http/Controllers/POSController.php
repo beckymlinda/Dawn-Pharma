@@ -303,6 +303,9 @@ class POSController extends Controller
 
             $cart[$existingIndex]['quantity'] = $newQuantity;
             $cart[$existingIndex]['subtotal'] = $cart[$existingIndex]['price'] * $newQuantity;
+            if (!isset($cart[$existingIndex]['purchase_price'])) {
+                $cart[$existingIndex]['purchase_price'] = $product->purchase_price;
+            }
         } else {
             // Add new item to cart at the end
             $newItem = [
@@ -311,6 +314,7 @@ class POSController extends Controller
                 'name' => $product->name,
                 'quantity' => $data['quantity'],
                 'price' => $product->selling_price,
+                'purchase_price' => $product->purchase_price,
                 'subtotal' => $data['quantity'] * $product->selling_price
             ];
             
@@ -350,6 +354,14 @@ class POSController extends Controller
     public function getCart(Request $request)
     {
         $cart = session()->get('pos_cart', []);
+        foreach ($cart as $index => $item) {
+            if (!isset($item['purchase_price']) && isset($item['product_id'])) {
+                $product = Product::find($item['product_id']);
+                $cart[$index]['purchase_price'] = $product ? $product->purchase_price : 0;
+            }
+        }
+        session()->put('pos_cart', $cart);
+
         $totalItems = collect($cart)->sum('quantity');
         $totalAmount = collect($cart)->sum('subtotal');
 
@@ -415,6 +427,13 @@ class POSController extends Controller
         $cart[$itemIndex]['subtotal'] = $cart[$itemIndex]['price'] * $data['quantity'];
         
         session()->put('pos_cart', $cart);
+
+        foreach ($cart as $index => $item) {
+            if (!isset($item['purchase_price']) && isset($item['product_id'])) {
+                $product = Product::find($item['product_id']);
+                $cart[$index]['purchase_price'] = $product ? $product->purchase_price : 0;
+            }
+        }
 
         return response()->json(['cart' => $cart, 'success' => true]);
     }

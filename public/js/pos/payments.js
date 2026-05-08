@@ -383,86 +383,96 @@ POSPayments.generateReceipt = function(paymentData) {
     const dateStr = POSApp.utils.formatDate();
     
     let receiptContent = '';
-    receiptContent += '<div style="width: 90%; max-width: 90%; font-family: \'Courier New\', monospace; font-size: 14px; margin: 0 auto; padding: 15px; line-height: 1.4; font-weight: bold;">';
+    receiptContent += '<div style="width: 100%; font-family: monospace; font-size: 14px; margin: 0; padding: 0; line-height: 1.4; color: #000;">';
     
     // Header
-    receiptContent += '<div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px;">';
-    receiptContent += '<h1 style="margin: 0; font-size: 20px; font-weight: bold;">EDUC PHARMACY</h1>';
-    receiptContent += '<div style="font-size: 12px; margin: 5px 0;">Area 47, Lilongwe, Malawi</div>';
-    receiptContent += '<div style="font-size: 12px; margin: 5px 0;">+265 999672775</div>';
+    receiptContent += '<div style="text-align: center; margin-bottom: 15px; pt-1">';
+    receiptContent += '<h1 style="margin: 0; font-size: 24px; font-weight: bold; text-transform: uppercase;">EDUC PHARMACY</h1>';
+    receiptContent += '<div style="font-size: 16px; font-weight: bold; margin: 4px 0;">Bwandilo Area 47</div>';
+    receiptContent += '<div style="font-size: 16px; margin: 2px 0;">Lilongwe Malawi</div>';
+    receiptContent += '<div style="font-size: 16px; font-weight: bold; margin: 4px 0;">0999672775</div>';
     receiptContent += '</div>';
     
-    // Customer and Date
-    receiptContent += '<div style="margin-bottom: 15px; font-size: 12px;">';
-    receiptContent += '<div style="margin: 5px 0;"><strong>Customer:</strong> Walk-In Customer</div>';
-    receiptContent += '<div style="margin: 5px 0;"><strong>Date:</strong> ' + dateStr + '</div>';
-    receiptContent += '<div style="margin: 5px 0;"><strong>Invoice:</strong> ' + (paymentData.invoice_no || 'N/A') + '</div>';
+    // Top Thick Border
+    receiptContent += '<div style="border-top: 2px solid #000; margin-bottom: 10px;"></div>';
+    
+    // Date and Invoice
+    receiptContent += '<div style="margin-bottom: 10px; font-size: 10px;">';
+    receiptContent += '<div style="margin: 2px 0;"><strong>Customer:</strong> ' + (paymentData.customer_name || 'Walk-In Customer') + '</div>';
+    receiptContent += '<div style="margin: 2px 0;"><strong>Date:</strong> ' + dateStr + '</div>';
+    receiptContent += '<div style="margin: 2px 0;"><strong>Invoice:</strong> ' + (paymentData.invoice_no || 'N/A') + '</div>';
     receiptContent += '</div>';
     
     // Items Header
-    receiptContent += '<div style="margin-bottom: 10px; border-top: 1px dashed #000; padding-top: 10px;">';
-    receiptContent += '<div style="display: flex; font-size: 12px; font-weight: bold; margin-bottom: 5px; border-bottom: 1px solid #000; padding-bottom: 3px;">';
-    receiptContent += '<div style="flex: 3;">ITEM</div>';
-    receiptContent += '<div style="flex: 1; text-align: center;">QTY</div>';
-    receiptContent += '<div style="flex: 1; text-align: right;">PRICE</div>';
-    receiptContent += '<div style="flex: 1; text-align: right;">TOTAL</div>';
-    receiptContent += '</div>';
+    receiptContent += '<table style="width: 100%; border-collapse: collapse; font-size: 9px; margin-bottom: 5px;">';
+    receiptContent += '<thead>';
+    receiptContent += '<tr style="border-top: 1px dashed #000; border-bottom: 1px dashed #000;">';
+    receiptContent += '<th style="text-align: left; padding: 8px 0; text-transform: uppercase;">ITEM</th>';
+    receiptContent += '<th style="text-align: center; padding: 8px 0; text-transform: uppercase;">QTY</th>';
+    receiptContent += '<th style="text-align: right; padding: 8px 0; text-transform: uppercase;">PRICE</th>';
+    receiptContent += '<th style="text-align: right; padding: 8px 0; text-transform: uppercase;">TOTAL</th>';
+    receiptContent += '</tr>';
+    receiptContent += '</thead>';
+    receiptContent += '<tbody>';
     
     // Items
     for (let i = 0; i < window.POSCart.state.items.length; i++) {
         const item = window.POSCart.state.items[i];
         const itemName = item.name || 'Unknown Product';
-        const itemPrice = parseFloat(item.price) || 0;
+        const itemPrice = parseFloat(item.price) || parseFloat(item.selling_price) || 0;
         const itemQty = item.quantity || 1;
         const itemTotal = itemPrice * itemQty;
         
-        receiptContent += '<div style="display: flex; font-size: 11px; margin-bottom: 3px; padding: 2px 0;">';
-        receiptContent += '<div style="flex: 3; font-weight: 500;">' + itemName + '</div>';
-        receiptContent += '<div style="flex: 1; text-align: center; font-weight: bold;">' + itemQty + '</div>';
-        receiptContent += '<div style="flex: 1; text-align: right;">' + itemPrice.toFixed(2) + '</div>';
-        receiptContent += '<div style="flex: 1; text-align: right; font-weight: bold;">' + itemTotal.toFixed(2) + '</div>';
-        receiptContent += '</div>';
+        receiptContent += '<tr>';
+        receiptContent += '<td style="text-align: left; padding: 3px 0; color: #333;">' + itemName + '</td>';
+        receiptContent += '<td style="text-align: center; padding: 3px 0;">' + itemQty + '</td>';
+        receiptContent += '<td style="text-align: right; padding: 3px 0;">' + itemPrice.toFixed(2) + '</td>';
+        receiptContent += '<td style="text-align: right; padding: 3px 0;">' + itemTotal.toFixed(2) + '</td>';
+        receiptContent += '</tr>';
     }
     
-    receiptContent += '</div>';
+    receiptContent += '</tbody></table>';
     
     // Summary
-    receiptContent += '<div style="margin-top: 15px; border-top: 1px dashed #000; padding-top: 10px;">';
-    receiptContent += '<div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; margin-bottom: 5px;">';
-    receiptContent += '<div>SUBTOTAL:</div>';
-    receiptContent += '<div>' + POSApp.utils.formatCurrency(totalAmount) + '</div>';
+    receiptContent += '<div style="border-top: 1px dashed #000; margin-top: 5px; margin-bottom: 10px;"></div>';
+    
+    receiptContent += '<div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: bold; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 5px;">';
+    receiptContent += '<span>SUBTOTAL:</span>';
+    receiptContent += '<span>MWK ' + totalAmount.toFixed(2) + '</span>';
     receiptContent += '</div>';
     
     // Payment details
-    receiptContent += '<div style="margin-top: 10px; border-top: 1px solid #000; padding-top: 8px;">';
     for (let j = 0; j < paymentData.payments.length; j++) {
         const payment = paymentData.payments[j];
-        const paymentMethod = payment.method.charAt(0).toUpperCase() + payment.method.slice(1).replace('_', ' ');
+        const paymentMethod = payment.method.toUpperCase().replace('_', ' ');
         
-        receiptContent += '<div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 3px;">';
-        receiptContent += '<div>' + paymentMethod + ':</div>';
-        receiptContent += '<div>' + POSApp.utils.formatCurrency(payment.amount) + '</div>';
+        receiptContent += '<div style="display: flex; justify-content: space-between; font-size: 10px; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 4px;">';
+        receiptContent += '<span>' + paymentMethod + ':</span>';
+        receiptContent += '<span>MWK ' + payment.amount.toFixed(2) + '</span>';
         receiptContent += '</div>';
     }
     
-    receiptContent += '<div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; margin: 8px 0; border-top: 1px solid #000; padding-top: 5px;">';
-    receiptContent += '<div>TOTAL PAID:</div>';
-    receiptContent += '<div>' + POSApp.utils.formatCurrency(totalAmount) + '</div>';
+    const totalPaid = paymentData.payments.reduce((acc, p) => acc + p.amount, 0);
+    const changeAmount = Math.max(0, totalPaid - totalAmount);
+
+    receiptContent += '<div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; margin-top: 5px;">';
+    receiptContent += '<span>TOTAL PAID:</span>';
+    receiptContent += '<span>MWK ' + totalPaid.toFixed(2) + '</span>';
     receiptContent += '</div>';
     
-    receiptContent += '<div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 3px;">';
-    receiptContent += '<div>CHANGE:</div>';
-    receiptContent += '<div>' + POSApp.utils.formatCurrency(0) + '</div>';
-    receiptContent += '</div>';
-    
+    receiptContent += '<div style="display: flex; justify-content: space-between; font-size: 11px; margin-top: 4px;">';
+    receiptContent += '<span>CHANGE:</span>';
+    receiptContent += '<span>MWK ' + changeAmount.toFixed(2) + '</span>';
     receiptContent += '</div>';
     
     // Footer
-    receiptContent += '<div style="margin-top: 20px; border-top: 1px dashed #000; padding-top: 15px; text-align: center;">';
-    receiptContent += '<div style="font-size: 13px; font-style: italic; margin-bottom: 5px;">Thank you for your purchase!</div>';
-    receiptContent += '<div style="font-size: 11px;">Please come again</div>';
-    receiptContent += '<div style="font-size: 10px; margin-top: 8px;">Powered by EDUC Consultancy</div>';
+    receiptContent += '<div style="border-top: 1px dashed #000; margin: 10px 0;"></div>';
+    receiptContent += '<div style="text-align: center; margin-top: 5px;">';
+    receiptContent += '<div style="font-size: 12px; font-style: italic; margin-bottom: 3px;">Thank you for your purchase!</div>';
+    receiptContent += '<div style="font-size: 10px;">Powered by EDUC Consultancy</div>';
     receiptContent += '</div>';
+    
+    receiptContent += '<div style="border-bottom: 2px solid #000; margin-top: 10px;"></div>';
     
     receiptContent += '</div>';
     
@@ -496,10 +506,8 @@ POSPayments.printReceiptDirectly = function() {
         const printWindow = printFrame.contentWindow;
         let html = '<!DOCTYPE html><html><head><title>Receipt</title>';
         html += '<style>';
-        html += 'body { font-family: monospace; margin: 10px; padding: 0; font-size: 14px; line-height: 1.3; }';
-        html += '.receipt-header { text-align: center; margin-bottom: 12px; border-bottom: 2px solid #000; padding-bottom: 6px; }';
-        html += '.receipt-footer { text-align: center; margin-top: 12px; border-top: 1px dashed #000; padding-top: 10px; }';
-        html += '@media print { body { margin: 5px; font-size: 13px; } .no-print { display: none; }';
+        html += 'body { font-family: monospace; margin: 0; padding: 15px 25px 15px 10px; font-size: 10px; line-height: 1.4; color: #000; width: 260px; }';
+        html += '@media print { body { margin: 0; padding: 15px 20px 15px 10px; width: 90%; } }';
         html += '</style></head><body>';
         html += content;
         html += '</body></html>';
@@ -565,10 +573,8 @@ POSPayments.printReceipt = function() {
     try {
         let html = '<!DOCTYPE html><html><head><title>Receipt</title>';
         html += '<style>';
-        html += 'body { font-family: monospace; margin: 10px; padding: 0; font-size: 14px; line-height: 1.3; }';
-        html += '.receipt-header { text-align: center; margin-bottom: 12px; border-bottom: 2px solid #000; padding-bottom: 6px; }';
-        html += '.receipt-footer { text-align: center; margin-top: 12px; border-top: 1px dashed #000; padding-top: 10px; }';
-        html += '@media print { body { margin: 5px; font-size: 13px; } .no-print { display: none; } }';
+        html += 'body { font-family: monospace; margin: 0; padding: 15px 25px 15px 10px; font-size: 10px; line-height: 1.4; color: #000; width: 260px; }';
+        html += '@media print { body { margin: 0; padding: 15px 20px 15px 10px; width: 90%; -webkit-print-color-adjust: exact; } }';
         html += '</style></head><body>';
         html += content;
         html += '</body></html>';

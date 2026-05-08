@@ -12,17 +12,18 @@ class RegisterReportController extends Controller
 {
     public function index(Request $request)
     {
-        // Get date range from request or use default (current month)
-        $fromDate = $request->input('from_date')
-            ? Carbon::createFromFormat('Y-m-d', $request->input('from_date'))->startOfDay()
-            : Carbon::now()->startOfMonth();
+        // Determine date range based on request (matching other reports for consistency)
+        $dateRange = $request->input('date_range', 'all_time');
 
-        $toDate = $request->input('to_date')
-            ? Carbon::createFromFormat('Y-m-d', $request->input('to_date'))->endOfDay()
-            : Carbon::now()->endOfMonth();
+        if ($dateRange === 'custom' && $request->has('from_date') && $request->has('to_date')) {
+            $fromDate = Carbon::createFromFormat('Y-m-d', $request->input('from_date'))->startOfDay();
+            $toDate   = Carbon::createFromFormat('Y-m-d', $request->input('to_date'))->endOfDay();
+        } else {
+            [$fromDate, $toDate] = $this->getDateRange($dateRange);
+        }
 
         // Build query
-        $query = Register::with(['user', 'location', 'sales'])
+        $query = Register::with(['user', 'location'])
             ->whereBetween('opened_at', [$fromDate, $toDate]);
 
         // Filter by user if selected
@@ -66,21 +67,19 @@ class RegisterReportController extends Controller
                 'total_advance' => $this->getTotalByPaymentMethod($register, 'advance'),
                 'total_national_bank' => $this->getTotalByPaymentMethod($register, 'national_bank'),
                 'total_standard_bank' => $this->getTotalByPaymentMethod($register, 'standard_bank'),
+                'total_airtel_money' => $this->getTotalByPaymentMethod($register, 'airtel_money'),
+                'total_mpamba' => $this->getTotalByPaymentMethod($register, 'mpamba'),
             ];
         });
 
         // Calculate summary totals across all (filtered) registers
         $summaryTotals = $this->calculateSummaryTotals($registers);
 
-        // Get distinct users for filter dropdown
-        $users = User::whereHas('registers')
-            ->orderBy('name')
-            ->get();
+        // Get all users for filter dropdown
+        $users = User::orderBy('name')->get();
 
-        // Get distinct locations for filter dropdown
-        $locations = Location::has('registers')
-            ->orderBy('name')
-            ->get();
+        // Get all locations for filter dropdown
+        $locations = Location::orderBy('name')->get();
 
         // Format currency
         $currency = 'MWK';
@@ -94,6 +93,7 @@ class RegisterReportController extends Controller
             'currency' => $currency,
             'fromDate' => $fromDate->format('Y-m-d'),
             'toDate' => $toDate->format('Y-m-d'),
+            'dateRange' => $dateRange,
             'selectedUser' => $request->input('user_id'),
             'selectedLocation' => $request->input('location_id'),
             'search' => $request->input('search'),
@@ -102,18 +102,48 @@ class RegisterReportController extends Controller
     }
 
     /**
+     * Helper function to get date range based on string input
+     */
+    private function getDateRange($rangeType)
+    {
+        $today = Carbon::now();
+
+        switch ($rangeType) {
+            case 'today':
+                return [$today->copy()->startOfDay(), $today->copy()->endOfDay()];
+            case 'yesterday':
+                return [$today->copy()->subDay()->startOfDay(), $today->copy()->subDay()->endOfDay()];
+            case 'this_week':
+                return [$today->copy()->startOfWeek(), $today->copy()->endOfWeek()];
+            case 'last_7_days':
+                return [$today->copy()->subDays(7)->startOfDay(), $today->copy()->endOfDay()];
+            case 'last_30_days':
+                return [$today->copy()->subDays(30)->startOfDay(), $today->copy()->endOfDay()];
+            case 'this_month':
+                return [$today->copy()->startOfMonth(), $today->copy()->endOfMonth()];
+            case 'last_month':
+                return [$today->copy()->subMonth()->startOfMonth(), $today->copy()->subMonth()->endOfMonth()];
+            case 'this_year':
+                return [$today->copy()->startOfYear(), $today->copy()->endOfYear()];
+            case 'all_time':
+                return [Carbon::parse('2020-01-01'), $today->copy()->endOfDay()];
+            default:
+                return [$today->copy()->startOfMonth(), $today->copy()->endOfMonth()];
+        }
+    }
+
+    /**
      * Export filtered data as CSV
      */
     public function exportCsv(Request $request)
     {
-        // Get date range from request or use default (current month)
-        $fromDate = $request->input('from_date')
-            ? Carbon::createFromFormat('Y-m-d', $request->input('from_date'))->startOfDay()
-            : Carbon::now()->startOfMonth();
-
-        $toDate = $request->input('to_date')
-            ? Carbon::createFromFormat('Y-m-d', $request->input('to_date'))->endOfDay()
-            : Carbon::now()->endOfMonth();
+        $dateRange = $request->input('date_range', 'this_month');
+        if ($dateRange === 'custom') {
+            $fromDate = Carbon::parse($request->input('from_date'))->startOfDay();
+            $toDate = Carbon::parse($request->input('to_date'))->endOfDay();
+        } else {
+            [$fromDate, $toDate] = $this->getDateRange($dateRange);
+        }
 
         // Build query
         $query = Register::with(['user', 'location', 'sales'])
@@ -138,7 +168,7 @@ class RegisterReportController extends Controller
         $registers = $query->orderBy('opened_at', 'desc')->get();
 
         // Create CSV content
-        $csvData = "Open Time,Close Time,Location,User,Email,Total Card,Total Cheques,Total Cash,Total Bank Transfer,Total Advance,National Bank,Standard Bank\n";
+        $csvData = "Open Time,Close Time,Location,User,Email,Total Card,Total Cheques,Total Cash,Total Bank Transfer,Total Advance,National Bank,Standard Bank,Airtel Money,Mpamba\n";
 
         foreach ($registers as $register) {
             $openTime = $register->opened_at->format('d-m-Y H:i');
@@ -147,21 +177,20 @@ class RegisterReportController extends Controller
             $userName = $register->user->name ?? 'Unknown';
             $userEmail = $register->user->email ?? '';
             
-            $totalCard = $this->getTotalByPaymentMethod($register, 'card');
-            $totalCheques = $this->getTotalByPaymentMethod($register, 'cheque');
-            $totalCash = $this->getTotalByPaymentMethod($register, 'cash');
-            $totalBankTransfer = $this->getTotalByPaymentMethod($register, 'bank_transfer');
-            $totalAdvance = $this->getTotalByPaymentMethod($register, 'advance');
-            $totalNationalBank = $this->getTotalByPaymentMethod($register, 'national_bank');
-            $totalStandardBank = $this->getTotalByPaymentMethod($register, 'standard_bank');
+            $vals = [
+                $this->getTotalByPaymentMethod($register, 'card'),
+                $this->getTotalByPaymentMethod($register, 'cheque'),
+                $this->getTotalByPaymentMethod($register, 'cash'),
+                $this->getTotalByPaymentMethod($register, 'bank_transfer'),
+                $this->getTotalByPaymentMethod($register, 'advance'),
+                $this->getTotalByPaymentMethod($register, 'national_bank'),
+                $this->getTotalByPaymentMethod($register, 'standard_bank'),
+                $this->getTotalByPaymentMethod($register, 'airtel_money'),
+                $this->getTotalByPaymentMethod($register, 'mpamba'),
+            ];
 
-            $csvData .= "\"$openTime\",\"$closeTime\",\"$location\",\"$userName\",\"$userEmail\",$totalCard,$totalCheques,$totalCash,$totalBankTransfer,$totalAdvance,$totalNationalBank,$totalStandardBank\n";
+            $csvData .= "\"$openTime\",\"$closeTime\",\"$location\",\"$userName\",\"$userEmail\"," . implode(',', $vals) . "\n";
         }
-
-        // Add summary row
-        $summary = $this->calculateSummaryTotals($registers);
-        $csvData .= "\nSUMMARY,,,,,";
-        $csvData .= "{$summary['total_card']},{$summary['total_cheques']},{$summary['total_cash']},{$summary['total_bank_transfer']},{$summary['total_advance']},{$summary['total_national_bank']},{$summary['total_standard_bank']}\n";
 
         // Create response
         $fileName = 'register-report-' . now()->format('Y-m-d-H-i-s') . '.csv';
@@ -193,6 +222,8 @@ class RegisterReportController extends Controller
             'total_advance' => 0,
             'total_national_bank' => 0,
             'total_standard_bank' => 0,
+            'total_airtel_money' => 0,
+            'total_mpamba' => 0,
         ];
 
         foreach ($registers as $register) {
@@ -203,18 +234,12 @@ class RegisterReportController extends Controller
             $totals['total_advance'] += $this->getTotalByPaymentMethod($register, 'advance');
             $totals['total_national_bank'] += $this->getTotalByPaymentMethod($register, 'national_bank');
             $totals['total_standard_bank'] += $this->getTotalByPaymentMethod($register, 'standard_bank');
+            $totals['total_airtel_money'] += $this->getTotalByPaymentMethod($register, 'airtel_money');
+            $totals['total_mpamba'] += $this->getTotalByPaymentMethod($register, 'mpamba');
         }
 
         // Calculate grand total
-        $totals['grand_total'] = array_sum([
-            $totals['total_cash'],
-            $totals['total_card'],
-            $totals['total_cheques'],
-            $totals['total_bank_transfer'],
-            $totals['total_advance'],
-            $totals['total_national_bank'],
-            $totals['total_standard_bank'],
-        ]);
+        $totals['grand_total'] = array_sum($totals);
 
         return $totals;
     }

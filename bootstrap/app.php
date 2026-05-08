@@ -9,11 +9,14 @@ require_once __DIR__ . '/../app/Helpers/RegisterHelper.php';
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
-        web: __DIR__.'/../routes/web.php',
+        web: [__DIR__.'/../routes/web.php', __DIR__.'/../routes/auth.php'],
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->web(prepend: [
+            \Illuminate\Session\Middleware\StartSession::class,
+        ]);
         $middleware->alias([
             'permission' => \App\Http\Middleware\CheckPermission::class,
             'log.activity' => \App\Http\Middleware\LogUserActivity::class,

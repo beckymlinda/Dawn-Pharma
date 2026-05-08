@@ -227,7 +227,9 @@ POSSearch.performSearch = function(query) {
     const results = [];
     for (let i = 0; i < productsData.length; i++) {
         const product = productsData[i];
-        if (product.name && product.name.toLowerCase().indexOf(query) !== -1) {
+        var nameMatch = product.name && product.name.toLowerCase().indexOf(query) !== -1;
+        var skuMatch = product.sku && product.sku.toLowerCase().indexOf(query) !== -1;
+        if (nameMatch || skuMatch) {
             results.push(product);
         }
     }

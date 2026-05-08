@@ -12,6 +12,8 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <!-- CSRF Token -->
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <!-- Favicon -->
+    <link rel="icon" type="image/jpeg" href="{{ asset('assets/images/logo.jpeg') }}">
 </head>
 <body>
 
@@ -1700,7 +1702,7 @@
   <!-- Receipt Modal -->
   <div class="modal fade" id="receiptModal" tabindex="-1"><div class="modal-dialog modal-sm"><div class="modal-content">
     <div class="modal-header"><h5 class="modal-title fw-bold">Sales Details</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
-    <div class="modal-body" id="receipt-print-area" style="font-family:monospace;font-size:12px"></div>
+    <div class="modal-body" id="receipt-print-area" style="font-family:monospace;font-size:11px"></div>
     <div class="modal-footer">
       <button class="btn btn-secondary btn-sm fw-semibold" data-bs-dismiss="modal" onclick="clearCartAfterPayment()">Close</button>
       <button class="btn btn-primary btn-sm fw-semibold" onclick="printReceipt()">🖨 Print</button>
@@ -3267,60 +3269,66 @@
       const timeStr = malawiTime.toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'});
 
       // Build receipt HTML
-      let html = `<div class="text-center mb-3">
-          <h3 class="fw-bold mb-2">EDUC Pharmacy</h3>
-          <p class="mb-1" style="font-size:14px">Area 47, Lilongwe, Malawi</p>
-          <p class="mb-0" style="font-size:14px">+265 999672775</p>
+      let html = `<div class="text-center mb-4 pt-2">
+          <h2 class="fw-bold mb-1" style="font-size:24px">EDUC Pharmacy</h2>
+          <p class="mb-1" style="font-size:16px">Area 47, Lilongwe, Malawi</p>
+          <p class="mb-0" style="font-size:16px">+265 999672775</p>
         </div>
-        <hr style="border:1px solid #000;margin:8px 0">
-        <div style="font-size:13px" class="mb-2">Customer: ${document.getElementById('customerSelect').value || 'Walk-In'}</div>
-        <div style="font-size:13px" class="mb-2">Date: ${dateStr} ${timeStr}</div>
-        <hr style="border:1px solid #000;margin:8px 0">
-        <table style="font-size:13px;width:100%;border-collapse:collapse">
+        <div style="border-top: 3px solid #000; margin-bottom: 15px"></div>
+        <div style="font-size:16px; font-family: monospace;" class="mb-4">
+            <div class="mb-1"><strong>Customer:</strong> ${document.getElementById('customerSelect').value || 'Walk-In Customer'}</div>
+            <div class="mb-1"><strong>Date:</strong> ${dateStr} ${timeStr}</div>
+            <div class="mb-1"><strong>Invoice:</strong> ${invoiceNo}</div>
+        </div>
+        <table style="font-size:15px; width:100%; border-collapse:collapse; font-family: monospace;">
           <thead>
-            <tr>
-              <th style="text-align:left;padding:2px">Item</th>
-              <th style="text-align:center;padding:2px">Qty</th>
-              <th style="text-align:right;padding:2px">Price</th>
-              <th style="text-align:right;padding:2px">Total</th>
+            <tr style="border-top: 1px dashed #000; border-bottom: 1px dashed #000;">
+              <th style="text-align:left; padding:8px 0; text-transform: uppercase;">Item</th>
+              <th style="text-align:center; padding:8px 0; text-transform: uppercase;">Qty</th>
+              <th style="text-align:right; padding:8px 0; text-transform: uppercase;">Price</th>
+              <th style="text-align:right; padding:8px 0; text-transform: uppercase;">Total</th>
             </tr>
           </thead>
           <tbody>`;
       cart.forEach(item => {
         html += `<tr>
-          <td style="text-align:left;padding:4px">${item.name || 'Unknown'}</td>
-          <td style="text-align:center;padding:4px">${item.quantity}</td>
-          <td style="text-align:right;padding:4px">${(parseFloat(item.price) || 0).toFixed(2)}</td>
-          <td style="text-align:right;padding:4px">${(parseFloat(item.subtotal) || 0).toFixed(2)}</td>
+          <td style="text-align:left; padding:6px 0; color: #555;">${item.name || 'Unknown'}</td>
+          <td style="text-align:center; padding:6px 0;">${item.quantity}</td>
+          <td style="text-align:right; padding:6px 0;">${(parseFloat(item.price) || 0).toFixed(2)}</td>
+          <td style="text-align:right; padding:6px 0;">${(parseFloat(item.subtotal) || 0).toFixed(2)}</td>
         </tr>`;
       });
       html += `</tbody></table>
-        <hr style="border:1px solid #000;margin:8px 0">
-        <div class="d-flex justify-content-between fw-bold" style="font-size:14px">
-          <span>Total:</span>
+        <div style="border-top: 1px dashed #000; margin-top: 5px; margin-bottom: 10px;"></div>
+        <div class="d-flex justify-content-between fw-bold mb-2" style="font-size:16px; border-bottom: 1px solid #000; padding-bottom: 5px;">
+          <span>SUBTOTAL:</span>
           <span>MWK ${total.toFixed(2)}</span>
-        </div>`;
+        </div>
+        <div class="text-center mb-4" style="font-size:16px; font-style: italic;">(Malawi Kwacha Only)</div>`;
       
       // Add all payment methods to receipt
       paymentRowsData.forEach((row, index) => {
         const methodLabel = row.method.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
-        html += `<div class="d-flex justify-content-between" style="font-size:13px">
-          <span>Payment ${index + 1} (${methodLabel}):</span>
+        html += `<div class="d-flex justify-content-between mb-2" style="font-size:16px; border-bottom: 1px solid #000; padding-bottom: 5px;">
+          <span>${methodLabel.toUpperCase()}:</span>
           <span>MWK ${(parseFloat(row.amount) || 0).toFixed(2)}</span>
         </div>`;
       });
       
-      html += `<div class="d-flex justify-content-between" style="font-size:13px">
-          <span>Total Paid:</span>
+      html += `<div class="d-flex justify-content-between fw-bold mb-2" style="font-size:16px;">
+          <span>TOTAL PAID:</span>
           <span>MWK ${paying.toFixed(2)}</span>
         </div>
-        <div class="d-flex justify-content-between" style="font-size:13px">
-          <span>Change:</span>
+        <div class="d-flex justify-content-between mb-2" style="font-size:16px;">
+          <span>CHANGE:</span>
           <span>MWK ${change.toFixed(2)}</span>
         </div>
-        <hr style="border:1px solid #000;margin:8px 0">
-        <p class="text-center text-muted mb-0" style="font-size:13px">Thank you for your purchase!</p>
-        <p class="text-center text-muted mb-0" style="font-size:12px">Powered by EDUC Consultancy</p>`;
+        <div style="border-top: 1px dashed #000; margin: 15px 0;"></div>
+        <div class="text-center mt-3">
+            <p style="font-style: italic; font-size: 16px; margin-bottom: 5px;">Thank you for your purchase!</p>
+            <p style="font-size: 14px; margin-bottom: 0;">LightSuitePOS</p>
+        </div>
+        <div style="border-bottom: 3px solid #000; margin-top: 15px;"></div>`;
 
       document.getElementById('receipt-print-area').innerHTML = html;
 
@@ -3470,7 +3478,32 @@
       document.body.appendChild(iframe);
       
       const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-      iframeDoc.write('<html><head><title>Receipt</title><style>body{font-family:monospace;font-size:11px;padding:8px;line-height:1.2}table{width:100%;border-collapse:collapse}td,th{padding:1px 2px}.text-center{text-align:center}.text-end{text-align:right}.fw-bold{font-weight:bold}.text-muted{color:#666}hr{border:none;border-top:1px dashed #000;margin:4px 0}.d-flex{display:flex}.justify-content-between{justify-content:space-between}.mb-0{margin-bottom:0}.mb-1{margin-bottom:2px}.mb-2{margin-bottom:4px}@media print{body{margin:0;padding:8px}}</style></head><body>' + content + '</body></html>');
+      iframeDoc.write(`<html><head><title>Receipt</title>
+      <style>
+        @page { margin: 0; }
+        body { 
+            font-family: monospace; 
+            font-size: 14px; 
+            padding: 20px 10px; 
+            line-height: 1.4;
+            color: #000;
+            width: 320px;
+            margin: 0 auto;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        td, th { padding: 4px 0; }
+        .text-center { text-align: center; }
+        .text-end { text-align: right; }
+        .fw-bold { font-weight: bold; }
+        .d-flex { display: flex; }
+        .justify-content-between { justify-content: space-between; }
+        .mb-1 { margin-bottom: 4px; }
+        .mb-2 { margin-bottom: 8px; }
+        .mb-4 { margin-bottom: 15px; }
+        @media print { 
+            body { padding: 10px; width: 100%; } 
+        }
+      </style></head><body>` + content + '</body></html>');
       iframeDoc.close();
       
       // Wait for content to load, then print

@@ -80,6 +80,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/reports/register-report/export', [RegisterReportController::class, 'exportCsv'])->name('reports.register-report.export');
     Route::get('/reports/stock-expiry', [StockExpiryReportController::class, 'index'])->name('reports.stock-expiry');
     Route::get('/reports/stock-expiry/export/csv', [StockExpiryReportController::class, 'exportCsv'])->name('reports.stock-expiry.export.csv');
+    Route::get('/reports/low-stock', [StockReportController::class, 'lowStock'])->name('reports.low-stock');
     
     // Stock Report
     Route::get('/stock-report', [StockReportController::class, 'index'])->name('stock.report');

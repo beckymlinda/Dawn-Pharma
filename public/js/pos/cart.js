@@ -654,11 +654,6 @@ POSCart.removeFromCartByProductId = function(productId) {
     const item = POSCart.state.items[itemIndex];
     const productName = item.name || (item.product && item.product.name) || 'Unknown Product';
     
-    if (!confirm(`Remove "${productName}" from cart?`)) {
-        console.log('⛔ Item removal cancelled by user');
-        return;
-    }
-    
     // Prevent duplicate operations
     const operationKey = `remove-${productId}`;
     if (POSCart.state.pendingOperations.has(operationKey)) {

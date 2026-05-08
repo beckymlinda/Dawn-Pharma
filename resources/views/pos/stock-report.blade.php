@@ -23,15 +23,23 @@
         <div class="card border">
           <div class="card-body">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-              <div class="d-flex align-items-center gap-2 small">
-                <span>Show</span><select class="form-select form-select-sm" style="width:auto"><option>25</option><option>50</option><option>100</option></select><span>entries</span>
+              <div class="d-flex align-items-center gap-2 small text-muted">
+                <span>Show</span>
+                <form method="GET" class="d-inline" id="perPageForm">
+                  <select name="per_page" class="form-select form-select-sm" style="width:auto" onchange="document.getElementById('perPageForm').submit()">
+                    <option value="25" {{ request('per_page') == 25 ? 'selected' : '' }}>25</option>
+                    <option value="50" {{ request('per_page') == 50 ? 'selected' : '' }}>50</option>
+                    <option value="100" {{ request('per_page') == 100 ? 'selected' : '' }}>100</option>
+                  </select>
+                </form>
+                <span>entries</span>
               </div>
               <div class="d-flex gap-2 flex-wrap">
-                <a href="{{ route('stock.report.export.csv') }}" class="toolbar-btn">📄 Export CSV</a>
-                <a href="{{ route('stock.report.export.excel') }}" class="toolbar-btn">📊 Export Excel</a>
-                <button class="toolbar-btn" onclick="window.print()">🖨 Print</button>
-                <button class="toolbar-btn" onclick="toggleColumnVisibility()">📋 Column visibility</button>
-                <a href="{{ route('stock.report.export.pdf') }}" class="toolbar-btn">📑 Export PDF</a>
+                <a href="{{ route('stock.report.export.csv') }}" class="btn btn-sm btn-outline-secondary">📄 Export CSV</a>
+                <a href="{{ route('stock.report.export.excel') }}" class="btn btn-sm btn-outline-secondary">📊 Export Excel</a>
+                <button class="btn btn-sm btn-outline-secondary" onclick="window.print()">🖨 Print</button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="toggleColumnVisibility()">📋 Column visibility</button>
+                <a href="{{ route('stock.report.export.pdf') }}" class="btn btn-sm btn-outline-secondary">📑 Export PDF</a>
               </div>
               <input type="text" class="form-control form-control-sm" style="width:200px" placeholder="Search ...">
             </div>
@@ -54,12 +62,24 @@
                     </tr>
                   @empty
                     <tr>
-                      <td colspan="9" class="text-center text-muted py-4">No products found</td>
+                      <td colspan="10" class="text-center text-muted py-4">No products found</td>
                     </tr>
                   @endforelse
                 </tbody>
               </table>
             </div>
+
+            <!-- Pagination -->
+            @if($products->hasPages())
+              <div class="d-flex align-items-center justify-content-between mt-3 pt-3 border-top">
+                <div class="small text-muted">
+                  Showing {{ $products->firstItem() }} to {{ $products->lastItem() }} of {{ $products->total() }} results
+                </div>
+                <div>
+                  {!! $products->appends(request()->query())->links() !!}
+                </div>
+              </div>
+            @endif
           </div>
         </div>
       </main>

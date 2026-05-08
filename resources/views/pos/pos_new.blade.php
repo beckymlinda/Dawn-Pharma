@@ -4,13 +4,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Modern POS - EDUC Pharmacy</title>
+    <title>POS - EDUC PHARMACY</title>
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <!-- CSRF Token -->
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="{{ asset('assets/images/logo.png') }}">
 </head>
 <body>
 
@@ -31,13 +33,16 @@
       <h1 class="pos-title" style="font-size: 1rem; margin: 0;">POS</h1>
     </div>
     <div class="pos-header-right" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-      <a href="{{ route('pos.recent.sales') }}" class="pos-btn" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">
+      <a href="{{ route('pos.recent.sales') }}" class="pos-btn pos-btn-success" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">
         <i class="bi bi-clock-history"></i> Recent Transactions
       </a>
-            <a href="{{ route('pos.register.details') }}" class="pos-btn pos-btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">
+            <a href="{{ route('pos.register.details') }}" class="pos-btn pos-btn-success" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">
         <i class="bi bi-cash-stack"></i> Register
       </a>
-      <a href="{{ route('register.confirm') }}" class="pos-btn text-white" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">
+      <button id="barcodeToggleBtn" class="pos-btn pos-btn-success barcode-toggle-btn" onclick="POSBarcodeScanner.toggle()" title="Toggle Barcode Scanner Mode" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">
+        <i class="bi bi-upc-scan"></i> <span id="barcodeBtnText">Scanner</span>
+      </button>
+      <a href="{{ route('register.confirm') }}" class="pos-btn pos-btn-success text-white" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">
         <i class="bi bi-power"></i> Close
       </a>
     </div>
@@ -49,15 +54,36 @@
       
       <!-- Search Section -->
       <section class="pos-search-section" style="padding: 1rem; flex-shrink: 0;">
+        <!-- Barcode Scanner Status Bar -->
+        <div id="barcodeScannerStatus" class="barcode-status-bar" style="display: none;">
+          <div class="barcode-status-inner">
+            <span class="barcode-pulse"></span>
+            <i class="bi bi-upc-scan"></i>
+            <span>Barcode Scanner Active — point your scanner at a barcode or type a SKU and press Enter</span>
+          </div>
+          <button class="barcode-status-close" onclick="POSBarcodeScanner.deactivate()" title="Disable Scanner Mode">
+            <i class="bi bi-x-lg"></i>
+          </button>
+        </div>
+
         <div class="search-container">
-          <div class="search-input-wrapper">
-            <i class="bi bi-search search-icon"></i>
+          <div class="search-input-wrapper" id="searchInputWrapper">
+            <i class="bi bi-search search-icon" id="searchModeIcon"></i>
             <input 
               type="text" 
               id="cartSearch" 
               class="search-input" 
               placeholder="Search products..."
               autocomplete="off">
+            <!-- Hidden barcode input always active when scanner mode is on -->
+            <input
+              type="text"
+              id="barcodeInput"
+              class="barcode-hidden-input"
+              autocomplete="off"
+              tabindex="-1"
+              placeholder=""
+              aria-label="Barcode scanner input">
             <div id="productLoadingIndicator" style="display: none; position: absolute; right: 10px; top: 50%; transform: translateY(-50%);">
               <div class="spinner-border spinner-border-sm" role="status">
                 <span class="visually-hidden">Loading...</span>
@@ -140,7 +166,7 @@
 <div class="modal fade" id="paymentModal" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
-      <div class="modal-header bg-success text-white">
+      <div class="modal-header bg-primary text-white">
         <h5 class="modal-title fw-bold">Complete Payment</h5>
         <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
@@ -200,7 +226,7 @@
             <div class="row">
               <div class="col-md-6">
                 <small class="text-muted">Total Paid:</small>
-                <h5 class="text-success">MWK <span id="totalPaid">0.00</span></h5>
+                <h5 class="text-primary">MWK <span id="totalPaid">0.00</span></h5>
               </div>
               <div class="col-md-6">
                 <small class="text-muted">Remaining Balance:</small>
@@ -227,7 +253,7 @@
           <i class="bi bi-trash"></i> Clear Cart
         </button>
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-success" onclick="finalizePayment()">
+        <button type="button" class="btn btn-primary" onclick="finalizePayment()">
           <i class="bi bi-check-circle"></i> Complete Payment
         </button>
       </div>
@@ -267,7 +293,7 @@
           <div class="col-md-6">
             <div class="card bg-light">
               <div class="card-body text-center">
-                <h5 class="card-title text-success mb-1">Total Transactions</h5>
+                <h5 class="card-title text-primary mb-1">Total Transactions</h5>
                 <h3 class="fw-bold" id="registerTotalTransactions">0</h3>
               </div>
             </div>
@@ -371,7 +397,14 @@
 
     // Receipt generation and printing are now handled by POSPayments module
 
-    // All remaining functions are now handled by the modular JavaScript files
+    // Session Keep-Alive to prevent 419 Page Expired
+    setInterval(function() {
+        fetch('/dashboard', { 
+            method: 'GET',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        }).then(response => console.log('Session refreshed'))
+          .catch(error => console.error('Session refresh failed', error));
+    }, 15 * 60 * 1000); // Refresh every 15 minutes
 </script>
 
 <!-- Load Modular POS JavaScript Files -->
@@ -380,6 +413,7 @@
 <script src="{{ asset('js/pos/products.js') }}"></script>
 <script src="{{ asset('js/pos/cart.js') }}"></script>
 <script src="{{ asset('js/pos/payments.js') }}"></script>
+<script src="{{ asset('js/pos/barcode.js') }}"></script>
 @endverbatim
 
 <!-- Additional cart styles moved to external pos.css -->
