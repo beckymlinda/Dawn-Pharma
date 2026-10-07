@@ -57,7 +57,7 @@
                                         {{ number_format($product->current_stock, 2) }} {{ $product->unit->name ?? '' }}
                                     </span>
                                 </td>
-                                <td>{{ number_format($product->alert_quantity, 2) }}</td>
+                                <td>{{ number_format($product->alertLevel(), 2) }}</td>
                                 <td>
                                     @if($product->current_stock <= 0)
                                         <span class="badge bg-dark">Out of Stock</span>

@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Brands - EDUC Pharmacy')
+@section('title', 'Brands - ' . setting('system_name'))
 
 @section('content')
 <div class="container-fluid">

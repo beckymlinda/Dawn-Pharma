@@ -13,7 +13,9 @@ use App\Models\Payment;
 use App\Models\StockHistory;
 use App\Helpers\PaymentMethods;
 use App\Models\IntegrityEvent;
+use App\Models\Register;
 use App\Services\IntegrityMonitor;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -35,7 +37,7 @@ class POSController extends Controller
                 ->with('error', 'Please open a register first');
         }
 
-        $products = Product::with('brand', 'category')->orderBy('name')->get();
+        $products = $this->posProducts();
         $categories = Category::orderBy('name')->get();
         $brands = Brand::orderBy('name')->get();
 
@@ -55,7 +57,7 @@ class POSController extends Controller
         // Clear any existing cart to ensure clean start for new sale
         session()->forget('pos_cart');
         
-        $products = Product::with('brand', 'category')->orderBy('name')->get();
+        $products = $this->posProducts();
         $categories = Category::orderBy('name')->get();
         $brands = Brand::orderBy('name')->get();
 
@@ -463,9 +465,41 @@ class POSController extends Controller
 
     public function finalizeSale(Request $request)
     {
-        // Check if user has open register
-        $openRegister = RegisterController::getOpenRegister();
-        
+        // Sales made while the till was offline are uploaded later (public/js/pos/offline.js).
+        // The goods have already left the shop, so such a sale is recorded at the time it
+        // was made and is never rejected for stock or price; problems are flagged instead.
+        $offline = $request->boolean('offline');
+        $soldAt = $offline ? $this->offlineSaleTime($request->input('sold_at')) : null;
+
+        // The invoice number is generated once per sale on the till, so a repeated request
+        // (a retry after a dropped connection, or an offline sale synced twice) returns
+        // the sale that was already saved instead of failing or creating a duplicate.
+        $existing = $request->filled('invoice_no')
+            ? Sale::where('invoice_no', $request->input('invoice_no'))->first()
+            : null;
+        if ($existing) {
+            if ((int) $existing->user_id !== (int) auth()->id()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Invoice number ' . $existing->invoice_no . ' is already used by another sale.'
+                ], 409);
+            }
+
+            return response()->json([
+                'success' => true,
+                'duplicate' => true,
+                'sale_id' => $existing->id,
+                'invoice_no' => $existing->invoice_no,
+                'message' => 'Sale was already saved',
+                'clear_cart' => true,
+            ]);
+        }
+
+        // Check if user has open register (for an offline sale: the register open when it was made)
+        $openRegister = $offline
+            ? $this->registerForOfflineSale($soldAt)
+            : RegisterController::getOpenRegister();
+
         if (!$openRegister) {
             return response()->json([
                 'success' => false,
@@ -478,23 +512,7 @@ class POSController extends Controller
             $cart = session()->get('pos_cart', []);
         }
         
-        // Ensure each item has necessary fields like price and subtotal
-        foreach ($cart as $key => $item) {
-            if (isset($item['product_id'])) {
-                $product = Product::find($item['product_id']);
-                if ($product) {
-                    if (!isset($item['price'])) {
-                        $cart[$key]['price'] = $product->selling_price;
-                    }
-                    if (!isset($item['subtotal'])) {
-                        $cart[$key]['subtotal'] = ($cart[$key]['price'] ?? $product->selling_price) * $item['quantity'];
-                    }
-                }
-            }
-        }
-        
         if (empty($cart)) {
-            DB::rollBack();
             return response()->json([
                 'success' => false, 
                 'error' => 'Cart is empty. Please add items to cart first.'
@@ -511,18 +529,54 @@ class POSController extends Controller
             // Start database transaction
             DB::beginTransaction();
             
-            // Pre-validate stock availability for all items in cart
-            foreach ($cart as $item) {
-                $product = Product::find($item['product_id']);
+            // Lock the products being sold until this sale commits, so two tills
+            // selling the last unit at the same moment cannot both succeed.
+            // Locked in id order so concurrent sales never deadlock each other.
+            $productIds = collect($cart)->pluck('product_id')->filter()->unique()->sort()->values();
+            $products = Product::whereIn('id', $productIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+
+            $requestedQty = [];
+            foreach ($cart as $key => $item) {
+                $product = $products->get($item['product_id'] ?? null);
                 if (!$product) {
                     DB::rollBack();
                     return response()->json([
                         'success' => false,
-                        'error' => 'Product not found in cart: ' . $item['product_id']
+                        'error' => 'Product not found in cart: ' . ($item['product_id'] ?? 'unknown')
                     ], 400);
                 }
-                
-                // Check if stock is negative or insufficient
+
+                $quantity = $item['quantity'] ?? null;
+                if (!is_numeric($quantity) || $quantity <= 0) {
+                    DB::rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Invalid quantity for product: ' . $product->name
+                    ], 400);
+                }
+
+                // Price always comes from the product record, never from the browser,
+                // so a sale cannot be recorded below the catalogue price.
+                $cart[$key]['quantity'] = (float) $quantity;
+                $cart[$key]['price'] = (float) $product->selling_price;
+                $cart[$key]['subtotal'] = round($cart[$key]['price'] * $cart[$key]['quantity'], 2);
+
+                $requestedQty[$product->id] = ($requestedQty[$product->id] ?? 0) + $cart[$key]['quantity'];
+            }
+
+            // Check stock against the total requested per product (the same product may appear on several lines)
+            $stockShortfalls = [];
+            foreach ($requestedQty as $productId => $quantity) {
+                $product = $products[$productId];
+
+                if ($offline) {
+                    // Already sold: record it, and flag stock that did not add up
+                    if ($product->current_stock < $quantity) {
+                        $stockShortfalls[] = ['product' => $product, 'sold' => $quantity, 'in_stock' => (float) $product->current_stock];
+                    }
+                    continue;
+                }
+
                 if ($product->current_stock < 0) {
                     DB::rollBack();
                     return response()->json([
@@ -530,14 +584,14 @@ class POSController extends Controller
                         'error' => 'Product ' . $product->name . ' has invalid stock level (' . $product->current_stock . '). Please contact administrator.'
                     ], 400);
                 }
-                
-                if ($product->current_stock < $item['quantity']) {
+
+                if ($product->current_stock < $quantity) {
                     DB::rollBack();
                     return response()->json([
                         'success' => false,
-                        'error' => 'Insufficient stock for product: ' . $product->name . 
-                                 '. Available: ' . $product->current_stock . 
-                                 ', Requested: ' . $item['quantity']
+                        'error' => 'Insufficient stock for product: ' . $product->name .
+                                 '. Available: ' . $product->current_stock .
+                                 ', Requested: ' . $quantity
                     ], 400);
                 }
             }
@@ -565,6 +619,17 @@ class POSController extends Controller
                     'payments.*.amount' => 'required|numeric|min:0.01'
                 ]);
 
+                // The payments must cover the whole sale, otherwise goods leave unpaid for
+                // (an offline sale was already paid at the till; it is flagged instead)
+                if (!$offline && round(collect($paymentsData)->sum('amount'), 2) < round($totalAmount, 2)) {
+                    DB::rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Payments (' . number_format(collect($paymentsData)->sum('amount'), 2) .
+                                 ') do not cover the sale total (' . number_format($totalAmount, 2) . ').'
+                    ], 400);
+                }
+
                 $createdSales = [];
                 $baseInvoiceNo = $validated['invoice_no'];
                 
@@ -582,10 +647,13 @@ class POSController extends Controller
                     'sell_due' => 0,
                     'total_items' => $totalItems,
                 ]);
+                if ($soldAt) {
+                    $sale->forceFill(['created_at' => $soldAt])->saveQuietly();
+                }
 
                 // Create POS record for tracking
                 POS::create([
-                    'date' => now(),
+                    'date' => $soldAt ?? now(),
                     'invoice_no' => $baseInvoiceNo,
                     'customer_name' => $validated['customer_name'] ?? 'Walk-In Customer',
                     'payment_status' => $validated['payment_status'],
@@ -608,10 +676,10 @@ class POSController extends Controller
 
                 // Create sale items and decrement stock once
                 foreach ($cart as $item) {
-                    $product = Product::find($item['product_id']);
+                    $product = $products[$item['product_id']];
                     $purchaseCost = $product ? $product->purchase_price : 0;
                     
-                    if (!$product || $product->current_stock < $item['quantity']) {
+                    if (!$product || (!$offline && $product->current_stock < $item['quantity'])) {
                         DB::rollBack();
                         return response()->json([
                             'success' => false,
@@ -630,7 +698,7 @@ class POSController extends Controller
                         'purchase_cost' => $purchaseCost
                     ]);
 
-                    $product->current_stock -= $item['quantity'];
+                    $product->current_stock = max(0, $product->current_stock - $item['quantity']);
                     $product->save();
                     
                     StockHistory::create([
@@ -640,7 +708,7 @@ class POSController extends Controller
                         'new_quantity' => $product->current_stock,
                         'unit_cost' => $purchaseCost,
                         'unit_price' => $item['price'],
-                        'date' => now()->toDateString(),
+                        'date' => ($soldAt ?? now())->toDateString(),
                         'reference_no' => $baseInvoiceNo,
                         'customer_supplier' => $validated['customer_name'] ?? 'Walk-In Customer',
                         'notes' => 'Sold in invoice #' . $baseInvoiceNo . ' (split)'
@@ -656,6 +724,9 @@ class POSController extends Controller
                 DB::commit();
 
                 IntegrityMonitor::checkCompletedSale($sale);
+                if ($offline) {
+                    $this->flagOfflineSale($sale, $openRegister, $stockShortfalls, $request->input('paid_total'));
+                }
 
                 return response()->json([
                     'success' => true,
@@ -694,10 +765,13 @@ class POSController extends Controller
                     'sell_due' => 0,
                     'total_items' => $totalItems,
                 ]);
+                if ($soldAt) {
+                    $sale->forceFill(['created_at' => $soldAt])->saveQuietly();
+                }
 
                 // Create POS record for tracking
                 POS::create([
-                    'date' => now(),
+                    'date' => $soldAt ?? now(),
                     'invoice_no' => $validated['invoice_no'],
                     'customer_name' => $validated['customer_name'] ?? 'Walk-In Customer',
                     'payment_status' => $validated['payment_status'],
@@ -718,11 +792,11 @@ class POSController extends Controller
 
                 // Create sale items and decrement stock
                 foreach ($cart as $item) {
-                    $product = Product::find($item['product_id']);
+                    $product = $products[$item['product_id']];
                     $purchaseCost = $product ? $product->purchase_price : 0;
                     
                     // Final stock validation before creating sale item
-                    if (!$product || $product->current_stock < $item['quantity']) {
+                    if (!$product || (!$offline && $product->current_stock < $item['quantity'])) {
                         // Rollback database transaction
                         DB::rollBack();
                         
@@ -745,7 +819,7 @@ class POSController extends Controller
 
                     // Decrement stock and create stock history
                     $oldStock = $product->current_stock;
-                    $product->current_stock -= $item['quantity'];
+                    $product->current_stock = max(0, $product->current_stock - $item['quantity']);
                     $product->save();
                     
                     // Debug logging
@@ -762,7 +836,7 @@ class POSController extends Controller
                         'new_quantity' => $product->current_stock,
                         'unit_cost' => $purchaseCost,
                         'unit_price' => $item['price'],
-                        'date' => now()->toDateString(),
+                        'date' => ($soldAt ?? now())->toDateString(),
                         'reference_no' => $validated['invoice_no'],
                         'customer_supplier' => $validated['customer_name'] ?? 'Walk-In Customer',
                         'notes' => 'Sold in invoice #' . $validated['invoice_no'] . ' (' . $validated['payment_method'] . ')'
@@ -777,6 +851,9 @@ class POSController extends Controller
                 DB::commit();
 
                 IntegrityMonitor::checkCompletedSale($sale);
+                if ($offline) {
+                    $this->flagOfflineSale($sale, $openRegister, $stockShortfalls, $request->input('paid_total'));
+                }
 
                 return response()->json([
                     'success' => true,
@@ -820,11 +897,86 @@ class POSController extends Controller
         }
     }
 
+    /**
+     * When an offline sale was made, as sent by the till. Times in the future or
+     * more than a week ago are not trusted (wrong device clock) and become "now".
+     */
+    private function offlineSaleTime($soldAt): Carbon
+    {
+        try {
+            $time = Carbon::parse($soldAt)->setTimezone(config('app.timezone'));
+        } catch (\Throwable $e) {
+            return now();
+        }
+
+        return $time->isFuture() || $time->lt(now()->subDays(7)) ? now() : $time;
+    }
+
+    /**
+     * The register an offline sale belongs to: the cashier's register that was open
+     * when the sale was made, otherwise their currently open one.
+     */
+    private function registerForOfflineSale(Carbon $soldAt): ?Register
+    {
+        return Register::where('user_id', auth()->id())
+                ->where('opened_at', '<=', $soldAt)
+                ->where(fn ($q) => $q->whereNull('closed_at')->orWhere('closed_at', '>=', $soldAt))
+                ->latest('opened_at')
+                ->first()
+            ?? RegisterController::getOpenRegister();
+    }
+
+    /**
+     * Raise loss-prevention events for an uploaded offline sale whose stock or
+     * payment did not add up, or that arrived after its register was closed.
+     */
+    private function flagOfflineSale(Sale $sale, Register $register, array $stockShortfalls, $paidTotal): void
+    {
+        $base = ['sale_id' => $sale->id, 'invoice_no' => $sale->invoice_no, 'register_id' => $register->id];
+
+        foreach ($stockShortfalls as $shortfall) {
+            $product = $shortfall['product'];
+            $missing = $shortfall['sold'] - max(0, $shortfall['in_stock']);
+            IntegrityEvent::record('offline_stock_shortfall', 'medium',
+                "Offline sale {$sale->invoice_no} sold {$shortfall['sold']} x {$product->name} but only {$shortfall['in_stock']} were in stock",
+                $base + ['product_id' => $product->id, 'amount' => $missing * (float) $product->purchase_price,
+                         'details' => ['sold' => $shortfall['sold'], 'in_stock' => $shortfall['in_stock']]]);
+        }
+
+        if (is_numeric($paidTotal) && round((float) $paidTotal, 2) < round((float) $sale->total_amount, 2)) {
+            IntegrityEvent::record('offline_underpaid', 'medium',
+                "Offline sale {$sale->invoice_no} was paid " . number_format($paidTotal, 2) . ' against a total of ' . number_format($sale->total_amount, 2),
+                $base + ['amount' => $sale->total_amount - $paidTotal,
+                         'details' => ['paid' => (float) $paidTotal, 'total' => (float) $sale->total_amount]]);
+        }
+
+        if ($register->closed_at) {
+            IntegrityEvent::record('offline_late_sync', 'low',
+                "Offline sale {$sale->invoice_no} was uploaded after register #{$register->id} was closed",
+                $base + ['amount' => $sale->total_amount, 'details' => ['register_closed_at' => (string) $register->closed_at]]);
+        }
+    }
+
+    /**
+     * Products for the POS screen. Cost prices are left out unless the user may
+     * see them, because everything sent to the till can be read in the browser.
+     */
+    private function posProducts()
+    {
+        $products = Product::with('brand', 'category')->orderBy('name')->get();
+
+        if (!auth()->user()->hasPermission('view_purchase_price')) {
+            $products->each->makeHidden(['purchase_price', 'last_purchase_price']);
+        }
+
+        return $products;
+    }
+
     public function refreshProducts()
     {
         try {
             // Get fresh product data with current stock levels
-            $products = Product::with('brand', 'category')->orderBy('name')->get();
+            $products = $this->posProducts();
             
             return response()->json([
                 'success' => true,
@@ -1002,7 +1154,7 @@ class POSController extends Controller
                         'name' => $user->name,
                         'email' => $user->email
                     ],
-                    'business_location' => 'EDUC Pharmacy',
+                    'business_location' => setting('system_name'),
                     'payment_methods' => $paymentMethods,
                     'totals' => [
                         'total_sales' => $totalSales,

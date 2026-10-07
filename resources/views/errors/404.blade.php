@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Page Not Found - {{ $settings['system_name'] ?? 'CNC Health Care' }}</title>
+    <title>Page Not Found - {{ setting('system_name') }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
-    <link rel="icon" type="image/jpeg" href="{{ isset($settings['favicon']) ? asset($settings['favicon']) : asset('assets/images/logo.jpeg') }}">
+    <link rel="icon" href="{{ brand_favicon_url() }}">
     <style>
         :root {
             --brand-primary: {{ $settings['primary_color'] ?? '#004d3d' }};
@@ -56,7 +56,7 @@
 </head>
 <body>
     <div class="error-card">
-        <img src="{{ isset($settings['logo']) ? asset($settings['logo']) : asset('assets/images/logo.jpeg') }}" alt="{{ $settings['system_name'] ?? 'CNC Health Care' }}" class="logo-img">
+        <img src="{{ brand_logo_url() }}" alt="{{ setting('system_name') }}" class="logo-img">
         <div class="error-icon">
             <i class="bi bi-exclamation-diamond"></i>
         </div>

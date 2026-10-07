@@ -52,7 +52,8 @@ POSApp.utils = {
      * Format currency amount
      */
     formatCurrency: function(amount) {
-        return 'MWK ' + parseFloat(amount || 0).toFixed(2);
+        // e.g. "MWK 12,500.00" (code that reads totals back strips the commas)
+        return 'MWK ' + (parseFloat(amount) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     },
 
     /**
@@ -63,9 +64,19 @@ POSApp.utils = {
         const isError = type === 'error' || message.includes('❌');
         
         notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+        // Bottom-right, so messages never cover the header buttons
         notification.style.cssText = isError 
-            ? 'top: 20px; right: 20px; z-index: 9999; min-width: 300px; background-color: #dc3545 !important; color: white !important; border: 2px solid #c82333 !important; font-weight: 600;'
-            : 'top: 20px; right: 20px; z-index: 9999; min-width: 250px;';
+            ? 'bottom: 20px; right: 20px; z-index: 9999; min-width: 300px; max-width: calc(100vw - 40px); background-color: #dc3545 !important; color: white !important; border: 2px solid #c82333 !important; font-weight: 600;'
+            : 'bottom: 20px; right: 20px; z-index: 9999; min-width: 250px; max-width: calc(100vw - 40px);';
+        notification.setAttribute('role', isError ? 'alert' : 'status');
+        if (window.innerWidth < 576) {
+            // Phones: under the header, so it never covers the Pay button
+            notification.style.bottom = 'auto';
+            notification.style.top = '62px';
+            notification.style.left = '12px';
+            notification.style.right = '12px';
+            notification.style.minWidth = '0';
+        }
         
         notification.innerHTML = `
             ${message}

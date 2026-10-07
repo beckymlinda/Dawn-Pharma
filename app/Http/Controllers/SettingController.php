@@ -17,17 +17,21 @@ class SettingController extends Controller
     public function update(Request $request)
     {
         $request->validate([
-            'system_name' => 'nullable|string|max:255',
+            'system_name' => 'required|string|max:255',
             'location'    => 'nullable|string|max:500',
             'telephone'   => 'nullable|string|max:50',
-            'primary_color'   => 'nullable|string|max:20',
-            'secondary_color' => 'nullable|string|max:20',
+            'email'       => 'nullable|email|max:255',
+            'tax_number'  => 'nullable|string|max:50',
+            'receipt_footer'  => 'nullable|string|max:255',
+            'primary_color'   => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'secondary_color' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'logo'    => 'nullable|image|mimes:jpeg,png,jpg,gif,svg,webp|max:2048',
             'favicon' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg,ico,webp|max:1024',
         ]);
 
-        // Save text/color settings
-        $data = $request->except(['_token', '_method', 'logo', 'favicon']);
+        // Save text/color settings (only these keys; other settings such as
+        // loss-prevention thresholds are managed on their own pages)
+        $data = $request->only(['system_name', 'location', 'telephone', 'email', 'tax_number', 'receipt_footer', 'primary_color', 'secondary_color']);
         foreach ($data as $key => $value) {
             Setting::updateOrCreate(['key' => $key], ['value' => $value]);
         }

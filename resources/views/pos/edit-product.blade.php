@@ -1,5 +1,5 @@
 @extends('layouts.app')
-@section('title', 'Edit Product - EDUC Pharmacy')
+@section('title', 'Edit Product - ' . setting('system_name'))
 
 @section('content')
 <div class="app-wrapper">

@@ -306,7 +306,7 @@
 <!-- HIDDEN RECEIPT FOR PRINTING ONLY (Z-REPORT) -->
 <div id="printable-receipt">
     <div class="text-center mb-3 pt-2">
-        @if(isset($settings['logo']))
+        @if(brand_image_exists($settings['logo'] ?? null))
             <img src="{{ asset($settings['logo']) }}" style="max-height: 50px; margin-bottom: 5px; filter: grayscale(1) contrast(1.2);">
         @endif
         <h2 class="fw-bold mb-1" style="font-size:22px">{{ $settings['system_name'] ?? 'REGISTER SUMMARY' }}</h2>
@@ -404,12 +404,23 @@
                         <div class="form-text">Include the opening float. Count notes and coins; do not copy a figure from the screen.</div>
                     </div>
                     @endif
+
+                    <div id="offlinePendingWarning" class="alert alert-warning alert-persistent text-start mx-3 mt-3 mb-0 d-none" role="alert">
+                        <i class="bi bi-cloud-upload me-1"></i>
+                        <strong><span id="offlinePendingCount">0</span> sale(s) made while offline</strong> are still saved on this
+                        device and not yet uploaded. The register can be closed once they are uploaded, so they are
+                        included in the Z report.
+                        <div class="mt-2">
+                            <button type="button" class="btn btn-sm btn-outline-dark" id="offlineSyncNow">Upload now</button>
+                            <span class="small text-muted ms-2" id="offlineSyncStatus"></span>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer border-0 d-flex justify-content-center gap-2 pb-4 pt-0">
                     <button type="button" class="btn btn-light px-4 py-2 rounded-pill fw-semibold" data-bs-dismiss="modal">
                         No, Cancel
                     </button>
-                    <button type="submit" class="btn btn-danger px-4 py-2 rounded-pill fw-semibold">
+                    <button type="submit" id="closeRegisterSubmit" class="btn btn-danger px-4 py-2 rounded-pill fw-semibold">
                         Yes, Close Register
                     </button>
                 </div>
@@ -417,6 +428,37 @@
         </div>
     </div>
 </div>
+
+{{-- Sales made offline on this device must be uploaded before the shift is closed --}}
+<meta name="pos-user" content="{{ auth()->id() }}">
+<script src="{{ asset('js/pos/offline.js') }}?v={{ filemtime(public_path('js/pos/offline.js')) }}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var warning = document.getElementById('offlinePendingWarning');
+        var submit = document.getElementById('closeRegisterSubmit');
+        var status = document.getElementById('offlineSyncStatus');
+
+        function refreshGuard() {
+            var pending = POSOffline.pendingCount();
+            submit.disabled = pending > 0;
+            if (!warning.isConnected) return;
+            document.getElementById('offlinePendingCount').textContent = pending;
+            warning.classList.toggle('d-none', pending === 0);
+            status.textContent = pending && POSOffline.state.lastError ? POSOffline.state.lastError : '';
+        }
+
+        document.getElementById('offlineSyncNow').addEventListener('click', function () {
+            status.textContent = 'Uploading…';
+            POSOffline.sync().then(refreshGuard);
+        });
+        document.getElementById('confirmCloseModal').addEventListener('show.bs.modal', function () {
+            POSOffline.sync().then(refreshGuard);
+        });
+
+        refreshGuard();
+        setInterval(refreshGuard, 3000);
+    });
+</script>
 @if($errors->has('counted_cash'))
 <script>
     // Re-open the close dialog so the cashier can enter the counted cash

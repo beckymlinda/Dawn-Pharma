@@ -251,7 +251,7 @@ POSPayments.addPaymentMethod = function() {
     
     if (!paymentMethodsList || !totalPayableElement) return;
     
-    const totalPayable = parseFloat(totalPayableElement.textContent.replace('MWK ', '').replace(',', '')) || 0;
+    const totalPayable = parseFloat(totalPayableElement.textContent.replace('MWK ', '').replace(/,/g, '')) || 0;
     let totalPaid = 0;
     
     document.querySelectorAll('.payment-amount').forEach(function(input) {
@@ -379,7 +379,8 @@ POSPayments.finalizePayment = function() {
         }
 
         const paymentData = {
-            invoice_no: 'INV-' + Date.now(),
+            // Unique per sale, even across tills; the server uses it to ignore a repeated upload
+            invoice_no: 'INV-' + Date.now() + String(Math.floor(Math.random() * 1000)).padStart(3, '0'),
             customer_name: 'Walk-In Customer',
             contact_number: '',
             payment_status: 'paid',
@@ -423,12 +424,19 @@ POSPayments.finalizePayment = function() {
             requestData.payment_method = paymentData.payments[0].method;
         }
         
+        // No connection at all: save the sale on this device straight away
+        if (window.POSOffline && POSOffline.isOffline()) {
+            POSPayments.completeOffline(paymentData, requestData);
+            return;
+        }
+
         const csrfToken = POSApp.utils.getCsrfToken();
         if (!csrfToken) {
             alert('Error: Security token not found');
             return;
         }
-        
+
+        let saleSaved = false;
         fetch(POSApp.config.apiEndpoints.finalize, {
             method: 'POST',
             credentials: 'same-origin',
@@ -442,6 +450,12 @@ POSPayments.finalizePayment = function() {
         })
         .then(function(response) {
             if (!response.ok) {
+                // Server unreachable (gateway/timeout): treat like being offline
+                if (window.POSOffline && POSOffline.isUnreachableStatus(response.status)) {
+                    const unreachable = new Error('Server unreachable (' + response.status + ')');
+                    unreachable.unreachable = true;
+                    throw unreachable;
+                }
                 return response.json().then(function(errorData) {
                     const serverMessage = errorData && errorData.error ? errorData.error : response.statusText;
                     throw new Error('Server error: ' + serverMessage + ' (' + response.status + ')');
@@ -453,41 +467,30 @@ POSPayments.finalizePayment = function() {
         })
         .then(function(data) {
             if (data.success) {
+                saleSaved = true;
                 console.log('Sale saved successfully:', data);
-                
-                // Generate receipt and PRINT IMMEDIATELY (before any cleanup)
-                POSPayments.generateReceipt(paymentData);
-                POSPayments.showReceiptAndPrint();
-                
-                // Now do cleanup after print dialog is open
-                POSApp.modal.hide('paymentModal');
-                
-                // Open cash drawer if there is change
-                if (POSPayments.state.changeAmount > 0) {
-                    POSPayments.openCashDrawer();
-                }
-                
-                // Clear cart locally
-                if (data.clear_cart && window.POSCart) {
-                    window.POSCart.state.items = [];
-                    window.POSCart.renderCart();
-                    localStorage.removeItem('pos_local_cart');
-                }
-                if (window.POSCart) {
-                    window.POSCart.clearCartAfterPayment();
-                }
-                
+                POSPayments.completeSale(paymentData);
+
                 // Refresh products in background
                 if (window.POSProducts) {
                     window.POSProducts.refreshProductData().catch(function(e) {});
                 }
-                
+
             } else {
                 console.error('Error saving sale:', data.error);
                 alert('Error saving sale: ' + data.error);
             }
         })
         .catch(function(error) {
+            // fetch() itself failing (TypeError) means the request never got an answer.
+            // The sale is saved on this device; if the server did receive it, the upload
+            // later is recognised by its invoice number and not recorded twice.
+            const noAnswer = error instanceof TypeError || error.unreachable;
+            if (!saleSaved && noAnswer && window.POSOffline) {
+                console.warn('Server unreachable, saving sale offline:', error);
+                POSPayments.completeOffline(paymentData, requestData);
+                return;
+            }
             console.error('Network error during finalization:', error);
             alert('Network error during finalization: ' + error.message + '. Please check your connection and try again.');
         });
@@ -496,6 +499,57 @@ POSPayments.finalizePayment = function() {
         console.error('Error finalizing payment:', e);
         alert('Error processing payment. Please try again.');
     }
+};
+
+/**
+ * After a sale is recorded (on the server, or saved offline): print the receipt,
+ * open the drawer and clear the cart.
+ */
+POSPayments.completeSale = function(paymentData) {
+    // Generate receipt and PRINT IMMEDIATELY (before any cleanup)
+    POSPayments.generateReceipt(paymentData);
+    POSPayments.showReceiptAndPrint();
+
+    // Now do cleanup after print dialog is open
+    POSApp.modal.hide('paymentModal');
+
+    // Open cash drawer if there is change
+    if (POSPayments.state.changeAmount > 0) {
+        POSPayments.openCashDrawer();
+    }
+
+    // Clear cart locally
+    if (window.POSCart) {
+        window.POSCart.state.items = [];
+        window.POSCart.renderCart();
+        localStorage.removeItem('pos_local_cart');
+        window.POSCart.clearCartAfterPayment();
+    }
+};
+
+/**
+ * Record a sale on this device while the server cannot be reached
+ * (uploaded later by public/js/pos/offline.js).
+ */
+POSPayments.completeOffline = function(paymentData, requestData) {
+    if (!POSOffline.queueSale(requestData, paymentData.total_amount)) {
+        alert('This device could not save the sale (storage full or blocked). The sale was NOT recorded.');
+        return;
+    }
+
+    // Lower the stock shown on this till so the cashier sees roughly what is left
+    if (window.POSProducts && Array.isArray(POSProducts.state.productsData)) {
+        (requestData.items || []).forEach(function(item) {
+            const id = item.product_id || (item.product && item.product.id);
+            const product = POSProducts.state.productsData.find(function(p) { return p.id == id; });
+            if (product) {
+                product.current_stock = Math.max(0, (parseFloat(product.current_stock) || 0) - (parseFloat(item.quantity) || 0));
+            }
+        });
+    }
+
+    POSPayments.completeSale(paymentData);
+    POSApp.utils.showNotification('📴 No connection: sale ' + paymentData.invoice_no + ' saved on this device. It will upload automatically.', 'warning');
 };
 
 /**
@@ -523,15 +577,22 @@ POSPayments.generateReceipt = function(paymentData) {
     let receiptContent = '';
     receiptContent += '<div style="width: 100%; font-family: monospace; font-size: 14px; margin: 0; padding: 0; line-height: 1.4; color: #000;">';
     
-    const systemName = (window.systemSettings && window.systemSettings.system_name) ? window.systemSettings.system_name : 'CNC HEALTH CARE';
-    const location = (window.systemSettings && window.systemSettings.location) ? window.systemSettings.location : 'Gateway Mall | Shop no. 9';
-    const telephone = (window.systemSettings && window.systemSettings.telephone) ? window.systemSettings.telephone : '0990575139';
+    // Business details come from System Settings (see config/business.php); empty ones are left off
+    const settings = window.systemSettings || {};
+    const esc = (value) => String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
     // Header
     receiptContent += '<div style="text-align: center; margin-bottom: 15px; pt-1">';
-    receiptContent += '<h1 style="margin: 0; font-size: 22px; font-weight: bold; text-transform: uppercase;">' + systemName + '</h1>';
-    receiptContent += '<div style="font-size: 14px; margin: 4px 0;">' + location + '</div>';
-    receiptContent += '<div style="font-size: 14px; margin: 4px 0;">Tel: ' + telephone + '</div>';
+    receiptContent += '<h1 style="margin: 0; font-size: 22px; font-weight: bold; text-transform: uppercase;">' + esc(settings.system_name || '') + '</h1>';
+    if (settings.location) {
+        receiptContent += '<div style="font-size: 14px; margin: 4px 0;">' + esc(settings.location) + '</div>';
+    }
+    if (settings.telephone) {
+        receiptContent += '<div style="font-size: 14px; margin: 4px 0;">Tel: ' + esc(settings.telephone) + '</div>';
+    }
+    if (settings.tax_number) {
+        receiptContent += '<div style="font-size: 12px; margin: 4px 0;">TPIN: ' + esc(settings.tax_number) + '</div>';
+    }
     receiptContent += '</div>';
     
     // Top Thick Border
@@ -623,8 +684,12 @@ POSPayments.generateReceipt = function(paymentData) {
     // Footer
     receiptContent += '<div style="border-top: 1px dashed #000; margin: 10px 0;"></div>';
     receiptContent += '<div style="text-align: center; margin-top: 5px;">';
-    receiptContent += '<div style="font-size: 12px; font-style: italic; margin-bottom: 3px;">Thank you for your purchase!</div>';
-    receiptContent += '<div style="font-size: 10px;">Powered by EDUC Consultancy</div>';
+    if (settings.receipt_footer) {
+        receiptContent += '<div style="font-size: 12px; font-style: italic; margin-bottom: 3px;">' + esc(settings.receipt_footer) + '</div>';
+    }
+    if (settings.powered_by) {
+        receiptContent += '<div style="font-size: 10px;">Powered by ' + esc(settings.powered_by) + '</div>';
+    }
     receiptContent += '</div>';
     
     receiptContent += '<div style="border-bottom: 2px solid #000; margin-top: 10px;"></div>';

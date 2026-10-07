@@ -61,7 +61,15 @@ class DashboardController extends Controller
         }
         
         // Calculate low stock items
-        $lowStockItems = Product::whereColumn('current_stock', '<=', 'alert_quantity')->count();
+        $lowStockItems = Product::lowStock()->count();
+
+        // Today's sales: the whole shop for admins, a cashier's own sales otherwise
+        $user = auth()->user();
+        $seesAllSales = $user->hasRole('admin') || $user->hasRole('super_admin');
+        $todayQuery = Sale::whereDate('created_at', Carbon::today())
+            ->when(!$seesAllSales, fn ($q) => $q->where('user_id', $user->id));
+        $todaySalesTotal = (float) (clone $todayQuery)->sum('total_amount');
+        $todaySalesCount = (clone $todayQuery)->count();
         
         return view('pos.dashboard', compact(
             'totalSales',
@@ -74,6 +82,9 @@ class DashboardController extends Controller
             'expense',
             'expiryItems',
             'lowStockItems',
+            'todaySalesTotal',
+            'todaySalesCount',
+            'seesAllSales',
             'labels',
             'data'
         ));

@@ -9,6 +9,9 @@ class Product extends Model
 {
     use HasFactory;
 
+    /** Alert level used for products without their own alert quantity */
+    public const DEFAULT_ALERT_QUANTITY = 5;
+
     protected $fillable = [
         'name', 'business_location', 'unit_id', 'category_id', 'brand_id',
         'supplier_id', 'purchase_price', 'last_purchase_price', 'selling_price', 
@@ -59,5 +62,19 @@ class Product extends Model
     public function businessLocation()
     {
         return $this->belongsTo(Location::class, 'business_location_id');
+    }
+
+    /**
+     * Products at or below their alert quantity (or the default when none is set),
+     * including everything that is out of stock.
+     */
+    public function scopeLowStock($query)
+    {
+        return $query->whereRaw('current_stock <= COALESCE(alert_quantity, ?)', [self::DEFAULT_ALERT_QUANTITY]);
+    }
+
+    public function alertLevel(): float
+    {
+        return (float) ($this->alert_quantity ?? self::DEFAULT_ALERT_QUANTITY);
     }
 }

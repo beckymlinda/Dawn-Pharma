@@ -27,13 +27,15 @@
                             @php
                                 $stockStatus = 'text-success';
                                 if($product->current_stock <= 0) $stockStatus = 'text-danger';
-                                elseif($product->current_stock <= $product->alert_quantity) $stockStatus = 'text-warning';
+                                elseif($product->current_stock <= $product->alertLevel()) $stockStatus = 'text-warning';
                             @endphp
                             <div class="fw-bold {{ $stockStatus }}">
                                 {{ number_format($product->current_stock, 0) }} {{ $product->unit?->short_name ?? 'pcs' }}
                             </div>
-                            @if($product->current_stock <= $product->alert_quantity)
-                                <div class="badge bg-danger-soft text-danger p-0" style="font-size: 10px;">Low Stock</div>
+                            @if($product->current_stock <= 0)
+                                <div class="badge bg-danger-soft text-danger p-0" style="font-size: 10px;">Out of stock</div>
+                            @elseif($product->current_stock <= $product->alertLevel())
+                                <div class="badge bg-warning-subtle text-warning-emphasis p-0" style="font-size: 10px;">Low stock</div>
                             @endif
                         </td>
                         <td class="text-end fw-medium text-muted">MWK {{ number_format($product->purchase_price, 0) }}</td>

@@ -6,13 +6,13 @@
     <!-- Hero Header -->
     <div class="row mb-4">
         <div class="col-12">
-            <div class="welcome-banner p-4 rounded-4 shadow-sm text-white mb-4 d-flex justify-content-between align-items-center flex-wrap gap-3">
+            <div class="welcome-banner p-3 p-md-4 rounded-4 shadow-sm text-white mb-2 mb-md-4 d-flex justify-content-between align-items-center flex-wrap gap-3">
                 <div>
-                    <h2 class="fw-bold mb-1">Hello, {{ Auth::user()->name ?? 'Ishmael' }}! 👋</h2>
-                    <p class="mb-0 opacity-75">Welcome back to your pharmacy command center.</p>
+                    <h2 class="fw-bold mb-1 fs-4">Hello, {{ Auth::user()->name }}!</h2>
+                    <p class="mb-0 opacity-75 small">Here is how {{ setting('system_name') }} is doing today.</p>
                 </div>
                 <div class="d-flex gap-2">
-                    <div class="date-chip px-3 py-2 rounded-pill bg-white bg-opacity-25 border border-white border-opacity-25">
+                    <div class="date-chip px-3 py-2 rounded-pill bg-white bg-opacity-25 border border-white border-opacity-25 d-none d-sm-block">
                         <i class="bi bi-calendar3 me-2"></i>
                         {{ now()->format('d M, Y') }}
                     </div>
@@ -24,13 +24,28 @@
         </div>
     </div>
 
-    <!-- Main Stats Row -->
-    <div class="row g-4 mb-4">
+    <!-- Main Stats Row (2 x 2 on phones) -->
+    <div class="row g-3 g-md-4 mb-4">
 
+        <!-- Today's Sales -->
+        <div class="col-6 col-lg-3">
+            <a href="{{ route('sales.index', ['period' => 'today']) }}" class="text-decoration-none h-100 d-block">
+                <div class="stat-card p-3 p-md-4 rounded-4 bg-white shadow-sm border-0 h-100 clickable-card">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div class="icon-box bg-success-soft rounded-3 p-3">
+                            <i class="bi bi-cash-coin fs-4 text-success"></i>
+                        </div>
+                    </div>
+                    <p class="text-muted mb-1 small fw-medium">{{ $seesAllSales ? "Today's Sales" : 'Your Sales Today' }}</p>
+                    <h3 class="fw-bold mb-0 fs-4">{{ formatCurrency($todaySalesTotal) }}</h3>
+                    <div class="small text-muted">{{ $todaySalesCount }} {{ $todaySalesCount == 1 ? 'sale' : 'sales' }}</div>
+                </div>
+            </a>
+        </div>
 
         <!-- Total Products -->
-        <div class="col-12 col-md-6 col-lg-4">
-            <div class="stat-card p-4 rounded-4 bg-white shadow-sm border-0 h-100">
+        <div class="col-6 col-lg-3">
+            <div class="stat-card p-3 p-md-4 rounded-4 bg-white shadow-sm border-0 h-100">
                 <div class="d-flex justify-content-between align-items-start mb-3">
                     <div class="icon-box bg-info-soft rounded-3 p-3">
                         <i class="bi bi-box-seam fs-4 text-info"></i>
@@ -42,14 +57,14 @@
         </div>
 
         <!-- Low Stock -->
-        <div class="col-12 col-md-6 col-lg-4">
+        <div class="col-6 col-lg-3">
             <a href="{{ route('reports.low-stock') }}" class="text-decoration-none h-100 d-block">
-                <div class="stat-card p-4 rounded-4 bg-white shadow-sm border-0 h-100 clickable-card">
+                <div class="stat-card p-3 p-md-4 rounded-4 bg-white shadow-sm border-0 h-100 clickable-card">
                     <div class="d-flex justify-content-between align-items-start mb-3">
                         <div class="icon-box {{ $lowStockItems > 0 ? 'bg-danger-soft' : 'bg-success-soft' }} rounded-3 p-3">
                             <i class="bi bi-exclamation-triangle fs-4 {{ $lowStockItems > 0 ? 'text-danger' : 'text-success' }}"></i>
                         </div>
-                        <span class="btn-view text-primary small fw-bold">View List <i class="bi bi-arrow-right"></i></span>
+                        <span class="btn-view text-primary small fw-bold d-none d-md-inline">View List <i class="bi bi-arrow-right"></i></span>
                     </div>
                     <p class="text-muted mb-1 small fw-medium">Low Stock Items</p>
                     <h3 class="fw-bold mb-0 {{ $lowStockItems > 0 ? 'text-danger' : '' }}">{{ $lowStockItems }}</h3>
@@ -58,14 +73,14 @@
         </div>
 
         <!-- Expiry Items -->
-        <div class="col-12 col-md-6 col-lg-4">
+        <div class="col-6 col-lg-3">
             <a href="{{ route('reports.stock-expiry') }}" class="text-decoration-none h-100 d-block">
-                <div class="stat-card p-4 rounded-4 bg-white shadow-sm border-0 h-100 clickable-card">
+                <div class="stat-card p-3 p-md-4 rounded-4 bg-white shadow-sm border-0 h-100 clickable-card">
                     <div class="d-flex justify-content-between align-items-start mb-3">
                         <div class="icon-box {{ $expiryItems > 0 ? 'bg-warning-soft' : 'bg-success-soft' }} rounded-3 p-3">
                             <i class="bi bi-clock-history fs-4 {{ $expiryItems > 0 ? 'text-warning' : 'text-success' }}"></i>
                         </div>
-                        <span class="btn-view text-primary small fw-bold">View List <i class="bi bi-arrow-right"></i></span>
+                        <span class="btn-view text-primary small fw-bold d-none d-md-inline">View List <i class="bi bi-arrow-right"></i></span>
                     </div>
                     <p class="text-muted mb-1 small fw-medium">Expiring Soon</p>
                     <h3 class="fw-bold mb-0 {{ $expiryItems > 0 ? 'text-warning' : '' }}">{{ $expiryItems }}</h3>

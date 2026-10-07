@@ -1,3 +1,4 @@
+@php($brand = business_settings())
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
@@ -7,10 +8,10 @@
     <meta name="session-auth" content="{{ auth()->check() ? '1' : '0' }}">
     <script src="{{ asset('js/session-guard.js') }}?v={{ filemtime(public_path('js/session-guard.js')) }}"></script>
 
-    <title>{{ $settings['system_name'] ?? 'CNC Health Care' }} - {{ __('Authentication') }}</title>
+    <title>{{ setting('system_name') }} - {{ __('Authentication') }}</title>
     
     <!-- Favicon -->
-    <link rel="icon" type="image/jpeg" href="{{ isset($settings['favicon']) ? asset($settings['favicon']) : asset('assets/images/logo.jpeg') }}">
+    <link rel="icon" href="{{ brand_favicon_url() }}">
     
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -29,16 +30,16 @@
             <div class="row g-0">
                 <!-- Branding Side (Hidden on Mobile) -->
                 <div class="col-lg-5 d-none d-lg-flex bg-brand-primary p-5 align-items-center justify-content-center text-center text-white flex-column">
-                    <img src="{{ isset($settings['logo']) ? asset($settings['logo']) : asset('assets/images/logo.jpeg') }}" alt="{{ $settings['system_name'] ?? 'CNC Health Care' }}" class="auth-logo mb-4 rounded-circle bg-white p-2">
-                    <h2 class="fw-bold mb-3">{{ $settings['system_name'] ?? 'CNC Health Care' }}</h2>
+                    <img src="{{ brand_logo_url() }}" alt="{{ setting('system_name') }}" class="auth-logo mb-4 rounded-circle bg-white p-2">
+                    <h2 class="fw-bold mb-3">{{ setting('system_name') }}</h2>
                     <p class="opacity-75">Your trusted partner in pharmacy management and healthcare efficiency.</p>
                 </div>
                 
                 <!-- Form Side -->
                 <div class="col-lg-7 p-4 p-md-5">
                     <div class="text-center mb-4 d-lg-none">
-                        <img src="{{ isset($settings['logo']) ? asset($settings['logo']) : asset('assets/images/logo.jpeg') }}" alt="{{ $settings['system_name'] ?? 'CNC Health Care' }}" class="auth-logo-sm mb-3 rounded-circle shadow-sm">
-                        <h3 class="fw-bold text-brand-primary">{{ $settings['system_name'] ?? 'CNC Health Care' }}</h3>
+                        <img src="{{ brand_logo_url() }}" alt="{{ setting('system_name') }}" class="auth-logo-sm mb-3 rounded-circle shadow-sm">
+                        <h3 class="fw-bold text-brand-primary">{{ setting('system_name') }}</h3>
                     </div>
                     
                     {{ $slot }}
@@ -49,8 +50,8 @@
 
     <style>
         :root {
-            --brand-primary: {{ $settings['primary_color'] ?? '#004d3d' }};
-            --brand-secondary: {{ $settings['secondary_color'] ?? '#006b54' }};
+            --brand-primary: {{ $brand['primary_color'] ?? '#004d3d' }};
+            --brand-secondary: {{ $brand['secondary_color'] ?? '#006b54' }};
             --brand-light: #f8fafc;
             --brand-accent: #22c55e;
             --brand-bg: #f0f4f8;

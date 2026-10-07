@@ -11,9 +11,12 @@ class CheckPermission
     /**
      * Handle an incoming request.
      *
+     * Passes when the user has ANY of the listed permissions,
+     * e.g. ->middleware('permission:view_pos_sell,add_pos_sell').
+     *
      * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
      */
-    public function handle(Request $request, Closure $next, string $permission): Response
+    public function handle(Request $request, Closure $next, string ...$permissions): Response
     {
         if (!auth()->check()) {
             abort(403, 'Unauthorized');
@@ -21,8 +24,7 @@ class CheckPermission
 
         $user = auth()->user();
         
-        // Check if user has the required permission
-        if (!$user->hasPermission($permission)) {
+        if (!collect($permissions)->contains(fn ($permission) => $user->hasPermission($permission))) {
             abort(403, 'You do not have permission to access this resource.');
         }
 

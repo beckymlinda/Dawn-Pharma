@@ -78,7 +78,7 @@
         </div>
 
       </main>
-      <footer class="app-footer">Educ| Copyright © 2026 All rights reserved.</footer>
+      <footer class="app-footer">{{ setting('system_name') }} | Copyright © {{ date('Y') }} All rights reserved.</footer>
     </div>
   </div>
 

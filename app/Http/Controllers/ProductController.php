@@ -67,7 +67,7 @@ class ProductController extends Controller
         // Stats for the modern UI
         $stats = [
             'total' => Product::count(),
-            'low_stock' => Product::whereColumn('current_stock', '<=', 'alert_quantity')->count(),
+            'low_stock' => Product::lowStock()->count(),
             'categories' => Category::count(),
             'total_value' => Product::sum(DB::raw('current_stock * purchase_price'))
         ];
@@ -150,7 +150,7 @@ class ProductController extends Controller
             }
 
             // Set business location and product type
-            $data['business_location'] = 'EDUC Pharmacy (BL0001)';
+            $data['business_location'] = setting('system_name');
             $data['product_type'] = 'Single';
             
             // Set purchase tracking fields
@@ -183,7 +183,7 @@ class ProductController extends Controller
                 // Create purchase
                 $purchase = Purchase::create([
                     'supplier_id' => $data['supplier_id'],
-                    'business_location' => 'EDUC Pharmacy (BL0001)',
+                    'business_location' => setting('system_name'),
                     'reference_no' => $referenceNo,
                     'purchase_date' => $purchaseDate,
                     'status' => 'received',
@@ -421,7 +421,7 @@ class ProductController extends Controller
             // Create purchase
             $purchase = Purchase::create([
                 'supplier_id' => $data['supplier_id'],
-                'business_location' => 'EDUC Pharmacy (BL0001)',
+                'business_location' => setting('system_name'),
                 'reference_no' => $data['reference_no'],
                 'purchase_date' => $data['purchase_date'],
                 'status' => 'received',
@@ -808,7 +808,7 @@ class ProductController extends Controller
                     'brand_id' => $brandId,
                     'unit_id' => $unitId,
                     'supplier_id' => $supplierId,
-                    'business_location' => 'EDUC Pharmacy (BL0001)',
+                    'business_location' => setting('system_name'),
                     'product_type' => 'Single',
                     'last_purchase_price' => !empty($row[3]) ? (float)$row[3] : 0,
                     'last_purchase_date' => now(),

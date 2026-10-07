@@ -12,7 +12,7 @@ if (!function_exists('formatCurrency')) {
         $formattedAmount = number_format($amount, $precision, $decimalSeparator, $thousandsSeparator);
         
         if ($position === 'before') {
-            return $symbol . $formattedAmount;
+            return $symbol . ' ' . $formattedAmount;
         } else {
             return $formattedAmount . ' ' . $symbol;
         }

@@ -98,18 +98,28 @@
             </div>
         </div>
 
-        @foreach($displayNames as $method => $displayName)
+        {{-- Only the payment methods used in this period --}}
+        @php
+            $usedMethods = collect($displayNames)->filter(fn ($name, $method) => ($summary['payment_methods'][$method]['count'] ?? 0) > 0);
+        @endphp
+        @forelse($usedMethods as $method => $displayName)
             @php
-                $data = $summary['payment_methods'][$method] ?? ['count' => 0, 'total' => 0];
+                $data = $summary['payment_methods'][$method];
             @endphp
             <div class="col-6 col-md-4 col-lg-2">
                 <div class="summary-card-modern bg-white border text-center p-3 rounded-3 shadow-sm h-100 d-flex flex-column justify-content-center">
                     <div class="small fw-medium text-muted mb-1">{{ $displayName }}</div>
-                    <div class="fw-bold text-primary mb-1">{{ $data['count'] }}</div>
                     <div class="fw-bold text-success">MWK {{ number_format($data['total'], 0) }}</div>
+                    <div class="small text-muted">{{ $data['count'] }} {{ $data['count'] == 1 ? 'sale' : 'sales' }}</div>
                 </div>
             </div>
-        @endforeach
+        @empty
+            <div class="col-12 col-md-8 col-lg-10">
+                <div class="summary-card-modern bg-white border text-center p-3 rounded-3 h-100 d-flex align-items-center justify-content-center text-muted">
+                    No sales in this period
+                </div>
+            </div>
+        @endforelse
     </div>
 
     <!-- Main Table Card -->

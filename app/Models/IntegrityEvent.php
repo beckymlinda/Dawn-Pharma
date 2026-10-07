@@ -41,6 +41,9 @@ class IntegrityEvent extends Model
         'after_hours_sale' => ['Sale outside business hours', 'A sale was made outside the configured business hours.'],
         'sale_without_register' => ['Sale without register', 'A sale was recorded without an open register.'],
         'failed_login' => ['Failed login', 'Someone entered a wrong password for this account.'],
+        'offline_stock_shortfall' => ['Offline sale beyond stock', 'A sale made while offline sold more than the system had in stock. Stock was set to zero; recount this product.'],
+        'offline_underpaid' => ['Offline sale underpaid', 'A sale made while offline was paid less than the current price (the price may have changed, or the payment was short).'],
+        'offline_late_sync' => ['Offline sale after register close', 'A sale made while offline was uploaded after its register was closed, so it is missing from that Z report.'],
     ];
 
     /** Weight of each severity when scoring cashier risk. */

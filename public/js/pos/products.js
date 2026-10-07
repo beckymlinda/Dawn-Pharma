@@ -427,7 +427,13 @@ POSProducts.refreshProductData = function() {
                 
                 const updatedProduct = POSProducts.state.productsData.find(function(p) { return p.name && p.name.toLowerCase().includes('amox'); });
                 console.log('Updated product stock:', updatedProduct ? updatedProduct.current_stock : 'Not found');
-                
+
+                // Show the new stock levels on the product tiles
+                if (window.POSGrid) {
+                    window.POSGrid.renderCategories();
+                    window.POSGrid.render();
+                }
+
                 resolve(true);
             })
             .catch(function(error) {

@@ -228,10 +228,10 @@ POSCart.renderCart = function() {
             console.log('🛒 Cart is empty, rendering empty state');
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="5" class="text-center text-muted" style="padding: 20px;">
+                    <td colspan="4" class="text-center text-muted" style="padding: 20px;">
                         <i class="bi bi-cart3" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
                         <div style="font-size: 1rem; font-weight: 600;">No items in cart</div>
-                        <div style="font-size: 0.875rem; color: #6c757d;">Start by searching for products</div>
+                        <div style="font-size: 0.875rem; color: #6c757d;">Tap a product or search to add it</div>
                     </td>
                 </tr>
             `;
@@ -377,27 +377,23 @@ POSCart.generateCartItemHTML = function(item, productInfo, index) {
     let html = '<tr>';
     html += '<td style="padding: 12px 8px; vertical-align: middle;">';
     html += '<div><strong>' + productInfo.name + '</strong></div>';
-    if (productInfo.sku) {
-        html += '<div><small class="text-muted">SKU: ' + productInfo.sku + '</small></div>';
-    }
+    html += '<div><small class="text-muted">' + POSApp.utils.formatCurrency(productInfo.sellingPrice) + ' each' +
+        (productInfo.sku ? ' · ' + productInfo.sku : '') + '</small></div>';
     html += '</td>';
     
     // Quantity input only (removed +/- buttons)
     html += '<td class="text-center" style="padding: 12px 8px; vertical-align: middle;">';
-    html += '<input type="number" class="form-control form-control-sm text-center quantity-input" value="' + currentInputValue + '" min="1" max="999999" data-product-id="' + productInfo.productId + '" style="width: 80px; margin: 0 auto;">';
+    html += '<input type="number" class="form-control form-control-sm text-center quantity-input" value="' + currentInputValue + '" min="1" max="999999" data-product-id="' + productInfo.productId + '" style="width: 72px; margin: 0 auto;" aria-label="Quantity">';
     html += '</td>';
     
-    html += '<td class="text-center" style="padding: 12px 8px; vertical-align: middle;">';
-    html += 'MWK ' + productInfo.costPrice.toFixed(2);
-    html += '</td>';
-    
-    html += '<td class="text-center" style="padding: 12px 8px; vertical-align: middle;">';
-    html += 'MWK ' + productInfo.sellingPrice.toFixed(2);
+    // Line total (unit price is under the name; cost price is not shown to cashiers)
+    html += '<td class="text-end text-nowrap fw-semibold" style="padding: 12px 8px; vertical-align: middle;">';
+    html += POSApp.utils.formatCurrency(itemTotal);
     html += '</td>';
     
     // Remove button with event delegation
     html += '<td class="text-center" style="padding: 12px 8px; vertical-align: middle;">';
-    html += '<button class="btn btn-sm btn-outline-danger btn-remove-item" data-product-id="' + productInfo.productId + '">';
+    html += '<button class="btn btn-sm btn-outline-danger btn-remove-item" data-product-id="' + productInfo.productId + '" title="Remove ' + productInfo.name.replace(/"/g, '&quot;') + '" aria-label="Remove">';
     html += '<i class="bi bi-trash"></i>';
     html += '</button>';
     html += '</td>';
@@ -422,6 +418,13 @@ POSCart.updateCartSummary = function(total, itemCount) {
         totalPayableElement.textContent = POSApp.utils.formatCurrency(total);
         console.log('💰 Updated total payable to: MWK', total.toFixed(2));
     }
+
+    // Nothing to pay for an empty cart
+    const payButton = document.getElementById('processPaymentBtn');
+    if (payButton) payButton.disabled = itemCount === 0;
+
+    // Product tiles show how many of each item are in the cart
+    if (window.POSGrid) window.POSGrid.render();
 };
 
 /**

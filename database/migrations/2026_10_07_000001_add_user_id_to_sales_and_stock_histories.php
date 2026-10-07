@@ -21,10 +21,11 @@ return new class extends Migration
         });
 
         // Backfill existing sales with the user who owned the register they were made on
+        // (correlated subquery rather than UPDATE ... JOIN so it also runs on SQLite in tests)
         DB::table('sales')
-            ->join('registers', 'registers.id', '=', 'sales.register_id')
-            ->whereNull('sales.user_id')
-            ->update(['sales.user_id' => DB::raw('registers.user_id')]);
+            ->whereNull('user_id')
+            ->whereNotNull('register_id')
+            ->update(['user_id' => DB::raw('(SELECT registers.user_id FROM registers WHERE registers.id = sales.register_id)')]);
     }
 
     public function down(): void

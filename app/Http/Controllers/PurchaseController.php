@@ -92,7 +92,7 @@ class PurchaseController extends Controller
             // Create Purchase
             $purchase = Purchase::create([
                 'supplier_id' => $validated['supplier_id'],
-                'business_location' => 'EDUC Pharmacy (BL0001)',
+                'business_location' => setting('system_name'),
                 'reference_no' => $validated['reference_no'],
                 'purchase_date' => $validated['purchase_date'],
                 'status' => $validated['status'],
@@ -144,7 +144,7 @@ class PurchaseController extends Controller
                     'date' => $validated['purchase_date'],
                     'reference_no' => $validated['reference_no'],
                     'customer_supplier' => $purchase->supplier->name ?? 'Unknown Supplier',
-                    'business_location_id' => 1 // EDUC Pharmacy location ID
+                    'business_location_id' => 1 // default location ID
                 ]);
             }
 

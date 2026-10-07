@@ -41,12 +41,13 @@ class AppServiceProvider extends ServiceProvider
                 ['user_id' => $event->user->id, 'register_id' => null]);
         });
 
-        // Share settings globally
-        try {
-            $settings = \App\Models\Setting::pluck('value', 'key')->toArray();
-            \Illuminate\Support\Facades\View::share('settings', $settings);
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\View::share('settings', []);
-        }
+        // Share settings globally (saved Settings with config/business.php defaults filled in)
+        // (read when a view renders, so a change saved earlier in the request is shown;
+        // pages that pass their own $settings, e.g. loss-prevention thresholds, keep theirs)
+        \Illuminate\Support\Facades\View::composer('*', function ($view) {
+            if (!array_key_exists('settings', $view->getData())) {
+                $view->with('settings', business_settings());
+            }
+        });
     }
 }

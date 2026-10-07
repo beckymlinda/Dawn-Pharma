@@ -1,3 +1,4 @@
+@php($brand = business_settings())
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,9 +7,9 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="session-auth" content="{{ auth()->check() ? '1' : '0' }}">
     <script src="{{ asset('js/session-guard.js') }}?v={{ filemtime(public_path('js/session-guard.js')) }}"></script>
-    <title>@yield('title', $settings['system_name'] ?? 'CNC Health Care')</title>
+    <title>@yield('title', setting('system_name'))</title>
     <!-- Favicon -->
-    <link rel="icon" type="image/jpeg" href="{{ isset($settings['favicon']) ? asset($settings['favicon']) : asset('assets/images/logo.jpeg') }}">
+    <link rel="icon" href="{{ brand_favicon_url() }}">
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Bootstrap Icons -->
@@ -17,8 +18,8 @@
     <link href="{{ asset('assets/css/style.css') }}" rel="stylesheet">
     <style>
         :root {
-            --theme-primary: {{ $settings['primary_color'] ?? '#004d3d' }};
-            --theme-secondary: {{ $settings['secondary_color'] ?? '#006b54' }};
+            --theme-primary: {{ $brand['primary_color'] ?? '#004d3d' }};
+            --theme-secondary: {{ $brand['secondary_color'] ?? '#006b54' }};
         }
         .bg-primary { background-color: var(--theme-primary) !important; }
         .text-primary { color: var(--theme-primary) !important; }
@@ -37,7 +38,7 @@
     <div class="border-end bg-white" id="sidebar-wrapper" style="width: 250px;">
     
     <div class="sidebar-heading border-bottom d-flex justify-content-between align-items-center">
-        <img src="{{ isset($settings['logo']) ? asset($settings['logo']) : asset('assets/images/logo.jpeg') }}" alt="{{ $settings['system_name'] ?? 'CNC Health Care' }}" style="height: 50px; width: auto; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));">
+        <img src="{{ brand_logo_url() }}" alt="{{ setting('system_name') }}" style="height: 50px; width: auto; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));">
         <span class="text-success">&bull;</span>
     </div>
 
@@ -309,20 +310,27 @@
         <!-- Top Navbar -->
         <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom">
             <div class="container-fluid">
-                <button class="btn btn-primary" id="sidebarToggle"><i class="bi bi-list"></i></button>
-                <div class="collapse navbar-collapse justify-content-end">
-                    <ul class="navbar-nav ms-auto mt-2 mt-lg-0">
-                        <li class="nav-item me-3">
-                            <a href="{{ route('pos.new') }}" class="nav-link text-white" title="Open POS">
-                                <i class="bi bi-qr-code-scan"></i>
+                <button class="btn btn-primary" id="sidebarToggle" aria-label="Menu"><i class="bi bi-list"></i></button>
+                {{-- Phones: say which shop this is (the sidebar with the logo is hidden) --}}
+                <span class="navbar-shop-name d-md-none text-white fw-semibold text-truncate ms-2">{{ setting('system_name') }}</span>
+                {{-- Always visible, including on phones (there is no other way to log out) --}}
+                <div class="d-flex align-items-center ms-auto">
+                    <ul class="navbar-nav flex-row align-items-center gap-2">
+                        @if(auth()->user()->hasPermission('add_pos_sell'))
+                        <li class="nav-item">
+                            <a href="{{ route('pos.new') }}" class="nav-link text-white d-flex align-items-center gap-1" title="Open POS">
+                                <i class="bi bi-cart3" aria-hidden="true"></i><span class="d-none d-md-inline">POS</span>
                             </a>
                         </li>
+                        @endif
                         <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" id="userDropdown" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                {{ Auth::user()->name ?? 'Ishmael Nyirenda' }}
+                            <a class="nav-link dropdown-toggle d-flex align-items-center gap-1" id="userDropdown" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Account menu">
+                                <i class="bi bi-person-circle d-md-none" aria-hidden="true"></i>
+                                <span class="d-none d-md-inline">{{ Auth::user()->name }}</span>
                             </a>
-                            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
-                                <li><a class="dropdown-item" href="#">Profile</a></li>
+                            <ul class="dropdown-menu dropdown-menu-end position-absolute" aria-labelledby="userDropdown">
+                                <li class="d-md-none"><span class="dropdown-item-text small text-muted">{{ Auth::user()->name }}</span></li>
+                                <li><a class="dropdown-item" href="{{ route('profile.edit') }}">Profile</a></li>
                                 <li><hr class="dropdown-divider"></li>
                                 <li>
                                     <form method="POST" action="{{ route('logout') }}" style="display: inline;">
@@ -440,6 +448,10 @@
         background: #a0aec0;
     }
 
+    /* Top bar stays on one line on phones */
+    .navbar > .container-fluid { flex-wrap: nowrap; }
+    .navbar-shop-name { min-width: 0; max-width: 55vw; }
+
     /* Navbar text */
     .navbar .navbar-text,
     .navbar .nav-link,
@@ -525,7 +537,7 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
 <!-- Custom JS -->
-<script src="{{ asset('assets/js/layout.js') }}"></script>
+<script src="{{ asset('assets/js/layout.js') }}?v={{ filemtime(public_path('assets/js/layout.js')) }}"></script>
 
 <script>
     // Enhanced mobile sidebar toggle

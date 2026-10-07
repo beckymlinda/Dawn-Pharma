@@ -1,7 +1,7 @@
 <x-guest-layout>
     <div class="registration-header mb-4 text-center">
         <h3 class="fw-bold text-dark mb-1">Create Account</h3>
-        <p class="text-muted small px-3">Join CNC Health Care pharmacy management system and start managing your business today.</p>
+        <p class="text-muted small px-3">Join {{ setting('system_name') }} and start managing your business today.</p>
     </div>
 
     <form method="POST" action="{{ route('register') }}" class="registration-form px-1 px-md-2">

@@ -1,10 +1,9 @@
-@section('content')
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Modern POS - EDUC Pharmacy</title>
+    <title>POS - {{ setting('system_name') }}</title>
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Bootstrap Icons -->
@@ -12,9 +11,10 @@
     <!-- CSRF Token -->
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="session-auth" content="{{ auth()->check() ? '1' : '0' }}">
+    <meta name="pos-user" content="{{ auth()->id() }}">
     <script src="{{ asset('js/session-guard.js') }}?v={{ filemtime(public_path('js/session-guard.js')) }}"></script>
     <!-- Favicon -->
-    <link rel="icon" type="image/jpeg" href="{{ isset($settings['favicon']) ? asset($settings['favicon']) : asset('assets/images/logo.jpeg') }}">
+    <link rel="icon" href="{{ brand_favicon_url() }}">
     <style>
         :root {
             --theme-primary: {{ $settings['primary_color'] ?? '#004d3d' }};
@@ -61,7 +61,7 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <!-- Link to external POS CSS -->
-<link href="{{ asset('css/pos.css') }}" rel="stylesheet">
+<link href="{{ asset('css/pos.css') }}?v={{ filemtime(public_path('css/pos.css')) }}" rel="stylesheet">
 
 <!-- Modern POS Design -->
 <div id="pos-screen" class="pos-wrapper">
@@ -74,24 +74,25 @@
       <h1 class="pos-title" style="font-size: 0.95rem; margin: 0;">POS</h1>
     </div>
     <div class="pos-header-right" style="display: flex; gap: 0.45rem; flex-wrap: wrap;">
-      <a href="{{ route('pos.recent.sales') }}" class="pos-btn" style="padding: 0.32rem 0.65rem; font-size: 0.78rem;">
-        <i class="bi bi-clock-history"></i> Recent
+      <a href="{{ route('pos.recent.sales') }}" class="pos-btn" title="Recent sales" style="padding: 0.32rem 0.65rem; font-size: 0.78rem;">
+        <i class="bi bi-clock-history" aria-hidden="true"></i> <span class="pos-btn-label">Recent</span>
       </a>
-            <a href="{{ route('pos.register.details') }}" class="pos-btn pos-btn-primary" style="padding: 0.32rem 0.65rem; font-size: 0.78rem;">
-        <i class="bi bi-cash-stack"></i> Register
+            <a href="{{ route('pos.register.details') }}" class="pos-btn pos-btn-primary" title="Register details" style="padding: 0.32rem 0.65rem; font-size: 0.78rem;">
+        <i class="bi bi-cash-stack" aria-hidden="true"></i> <span class="pos-btn-label">Register</span>
       </a>
       <button id="barcodeToggleBtn" class="pos-btn barcode-toggle-btn" onclick="POSBarcodeScanner.toggle()" title="Toggle Barcode Scanner Mode" style="padding: 0.32rem 0.65rem; font-size: 0.78rem;">
-        <i class="bi bi-upc-scan"></i> <span id="barcodeBtnText">Scanner</span>
+        <i class="bi bi-upc-scan" aria-hidden="true"></i> <span id="barcodeBtnText" class="pos-btn-label">Scanner</span>
       </button>
-      <a href="{{ route('register.confirm') }}" class="pos-btn text-white" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">
-        <i class="bi bi-power"></i> Close
+      <button type="button" id="offlineStatusBadge" class="pos-btn text-white" title="Connection status" style="padding: 0.32rem 0.65rem; font-size: 0.78rem; background: #16a34a; border: none;">Online</button>
+      <a href="{{ route('register.confirm') }}" class="pos-btn text-white" title="Close register" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">
+        <i class="bi bi-power" aria-hidden="true"></i> <span class="pos-btn-label">Close</span>
       </a>
     </div>
   </header>
 
-  <!-- Main Content - Single Column Layout -->
-  <main class="pos-main" style="padding: 0.9rem 0.9rem 2.5rem 0.9rem; gap: 0.9rem; height: calc(100vh - 72px);">
-    <div style="display: flex; flex-direction: column; gap: 0.9rem; height: 100%; min-height: 0;">
+  <!-- Main Content: products on the left, cart on the right (stacked on phones) -->
+  <main class="pos-main pos-main-split">
+    <div class="pos-left">
       
       <!-- Search Section -->
       <section class="pos-search-section" style="padding: 0.9rem; flex-shrink: 0;">
@@ -137,6 +138,13 @@
         </div>
       </section>
 
+      <!-- Product tiles: tap to add (filtered by the search box and category) -->
+      <section class="pos-products-section" aria-label="Products">
+        <div class="pos-category-chips" id="posCategoryChips" role="tablist" aria-label="Categories"></div>
+        <div class="pos-product-grid" id="posProductGrid"></div>
+      </section>
+    </div>
+
       <!-- Cart Section -->
       <section class="pos-cart-section" style="padding: 1rem; flex: 1; display: flex; flex-direction: column;">
         <div class="cart-header" style="padding-bottom: 0.75rem; border-bottom: 1px solid #e2e8f0; margin-bottom: 0.75rem;">
@@ -163,18 +171,17 @@
             <thead>
               <tr style="background-color: #f8f9fa; border-bottom: 2px solid #dee2e6;">
                 <th style="padding: 12px 8px; font-weight: 600; text-transform: uppercase; font-size: 12px; color: #495057; text-align: left;">Product</th>
-                <th style="padding: 12px 8px; font-weight: 600; text-transform: uppercase; font-size: 12px; color: #495057; text-align: center;">Quantity</th>
-                <th style="padding: 12px 8px; font-weight: 600; text-transform: uppercase; font-size: 12px; color: #495057; text-align: center;">Cost Price</th>
-                <th style="padding: 12px 8px; font-weight: 600; text-transform: uppercase; font-size: 12px; color: #495057; text-align: center;">Selling Price</th>
-                <th style="padding: 12px 8px; font-weight: 600; text-transform: uppercase; font-size: 12px; color: #495057; text-align: center;">Actions</th>
+                <th style="padding: 12px 8px; font-weight: 600; text-transform: uppercase; font-size: 12px; color: #495057; text-align: center; width: 92px;">Qty</th>
+                                <th style="padding: 12px 8px; font-weight: 600; text-transform: uppercase; font-size: 12px; color: #495057; text-align: right;">Total</th>
+                <th style="padding: 12px 8px; font-weight: 600; text-transform: uppercase; font-size: 12px; color: #495057; text-align: center; width: 56px;"><span class="visually-hidden">Remove</span></th>
               </tr>
             </thead>
             <tbody id="cart-items-container">
               <tr>
-                <td colspan="5" class="text-center text-muted" style="padding: 20px;">
+                <td colspan="4" class="text-center text-muted" style="padding: 20px;">
                   <i class="bi bi-cart3" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
                   <div style="font-size: 1rem; font-weight: 600;">No items in cart</div>
-                  <div style="font-size: 0.875rem; color: #6c757d;">Start by searching for products</div>
+                  <div style="font-size: 0.875rem; color: #6c757d;">Tap a product or search to add it</div>
                 </td>
               </tr>
             </tbody>
@@ -192,13 +199,12 @@
               <button class="action-btn action-btn-cancel text-danger" onclick="clearCart()" style="flex: 1; min-width: 110px; padding: 0.65rem; font-size: 0.88rem; background-color: #fff1f2; border: 1px solid #fecdd3; font-weight: bold; border-radius: 10px; transition: all 0.2s;">
                 <i class="bi bi-trash3-fill"></i> Cancel Sale
               </button>
-              <button class="action-btn action-btn-pay" onclick="showModal('paymentModal')" style="flex: 2; min-width: 140px; padding: 0.65rem; font-size: 0.95rem; font-weight: bold; border-radius: 10px; box-shadow: 0 3px 8px rgba(34, 197, 94, 0.3); transition: all 0.2s;">
+              <button class="action-btn action-btn-pay" id="processPaymentBtn" onclick="showModal('paymentModal')" style="flex: 2; min-width: 140px; padding: 0.65rem; font-size: 0.95rem; font-weight: bold; border-radius: 10px; box-shadow: 0 3px 8px rgba(34, 197, 94, 0.3); transition: all 0.2s;">
                 <i class="bi bi-credit-card-fill"></i> Process Payment
               </button>
             </div>
         </div>
       </section>
-    </div>
   </main>
 </div>
 
@@ -387,7 +393,9 @@
 <script>
     // Pass initial products data to the modular JavaScript
     var productsData = @json($products ?? []);
-    var systemSettings = @json($settings ?? []);
+    // Only the details printed on receipts; loss-prevention thresholds etc. stay on the server
+    @php($receiptSettings = \Illuminate\Support\Arr::only(business_settings(), ['system_name', 'location', 'telephone', 'email', 'tax_number', 'receipt_footer', 'powered_by']))
+    var systemSettings = @json($receiptSettings);
     console.log('Products loaded from server:', productsData.length);
     
     // Initialize POSProducts with the loaded data
@@ -481,12 +489,20 @@ window.fetch = function(url, options = {}) {
 </script>
 
 <!-- Load Modular POS JavaScript Files -->
-<script src="{{ asset('js/pos/app.js') }}?v={{ time() }}"></script>
-<script src="{{ asset('js/pos/search.js') }}?v={{ time() }}"></script>
-<script src="{{ asset('js/pos/products.js') }}?v={{ time() }}"></script>
-<script src="{{ asset('js/pos/cart.js') }}?v={{ time() }}"></script>
-<script src="{{ asset('js/pos/payments.js') }}?v={{ time() }}"></script>
-<script src="{{ asset('js/pos/barcode.js') }}?v={{ time() }}"></script>
+<script src="{{ asset('js/pos/app.js') }}?v={{ filemtime(public_path('js/pos/app.js')) }}"></script>
+<script src="{{ asset('js/pos/search.js') }}?v={{ filemtime(public_path('js/pos/search.js')) }}"></script>
+<script src="{{ asset('js/pos/products.js') }}?v={{ filemtime(public_path('js/pos/products.js')) }}"></script>
+<script src="{{ asset('js/pos/cart.js') }}?v={{ filemtime(public_path('js/pos/cart.js')) }}"></script>
+<script src="{{ asset('js/pos/payments.js') }}?v={{ filemtime(public_path('js/pos/payments.js')) }}"></script>
+<script src="{{ asset('js/pos/barcode.js') }}?v={{ filemtime(public_path('js/pos/barcode.js')) }}"></script>
+<script src="{{ asset('js/pos/grid.js') }}?v={{ filemtime(public_path('js/pos/grid.js')) }}"></script>
+<script src="{{ asset('js/pos/offline.js') }}?v={{ filemtime(public_path('js/pos/offline.js')) }}"></script>
+<script>
+    // Lets the POS page open again without internet (see public/sw.js)
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(function (e) { console.warn('Offline page cache unavailable:', e); });
+    }
+</script>
 
 
 <!-- Additional cart styles moved to external pos.css -->

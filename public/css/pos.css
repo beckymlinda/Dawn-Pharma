@@ -983,3 +983,131 @@
   30%  { background: #fef2f2; border-color: #ef4444; box-shadow: 0 0 16px rgba(239, 68, 68, 0.35); }
   100% { background: #f8fafc; }
 }
+
+/* ─── Product tiles + split layout (products left, cart right) ─────────────── */
+.pos-btn { text-decoration: none; }
+.pos-btn:hover, .pos-btn:focus { color: #fff; text-decoration: none; }
+
+.pos-main.pos-main-split { padding: 0.9rem; gap: 0.9rem; max-width: none; min-height: 0; }
+.pos-left { display: flex; flex-direction: column; gap: 0.9rem; min-width: 0; }
+
+.pos-products-section {
+  background: #fff;
+  border-radius: 14px;
+  padding: 0.75rem;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.07);
+  border: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pos-category-chips { display: flex; gap: 0.4rem; overflow-x: auto; padding-bottom: 0.6rem; scrollbar-width: thin; }
+.pos-chip {
+  flex: 0 0 auto;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  border-radius: 999px;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.pos-chip:hover { border-color: var(--theme-primary); }
+.pos-chip.active { background: var(--theme-primary); border-color: var(--theme-primary); color: #fff; }
+
+.pos-product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.6rem;
+  overflow-y: auto;
+  align-content: start;
+  max-height: 232px;            /* phones: a short strip above the cart */
+  padding: 2px;                 /* room for the focus outline */
+}
+
+.pos-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  min-height: 98px;
+  padding: 0.7rem 0.75rem;
+  text-align: left;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.05s;
+}
+.pos-tile:hover { border-color: var(--theme-primary); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); }
+.pos-tile:active { transform: scale(0.98); }
+.pos-tile:focus-visible { outline: 3px solid var(--theme-secondary); outline-offset: 2px; }
+.pos-tile-name {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: #0f172a;
+  line-height: 1.25;
+  padding-right: 1.4rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pos-tile-price { margin-top: auto; font-weight: 700; font-size: 0.9rem; color: var(--theme-primary); }
+.pos-tile-stock { font-size: 0.72rem; color: #64748b; }
+.pos-tile.low .pos-tile-stock { color: #b45309; font-weight: 600; }
+.pos-tile.out { background: #f8fafc; cursor: not-allowed; opacity: 0.6; }
+.pos-tile.out .pos-tile-stock { color: #b91c1c; font-weight: 600; }
+.pos-tile.in-cart { border-color: var(--theme-secondary); background: #f0fdf4; }
+.pos-tile-count {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: var(--theme-secondary);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pos-grid-empty, .pos-grid-more { grid-column: 1 / -1; text-align: center; color: #64748b; padding: 1.5rem 0.5rem; font-size: 0.9rem; }
+.pos-grid-empty i { display: block; font-size: 1.5rem; margin-bottom: 0.35rem; }
+
+#processPaymentBtn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none !important; }
+
+/* Laptops and wider: products fill the left, the cart stays visible on the right */
+@media (min-width: 992px) {
+  .pos-main.pos-main-split { flex-direction: row; align-items: stretch; height: calc(100vh - 58px); }
+  .pos-left { flex: 1; min-height: 0; }
+  .pos-products-section { flex: 1; }
+  .pos-product-grid { flex: 1; max-height: none; }
+  .pos-main-split > .pos-cart-section { flex: 0 0 440px; max-width: 440px; min-height: 0; }
+  .pos-main-split .cart-items { max-height: none !important; }
+}
+
+/* Phones and small tablets: the cart grows with its items instead of being squeezed */
+@media (max-width: 991.98px) {
+  .pos-main-split > .pos-cart-section { flex: 0 0 auto; }
+  .pos-main-split .cart-items { max-height: none !important; overflow: visible !important; }
+}
+
+/* Phones: header buttons show icons only, on one row */
+@media (max-width: 575.98px) {
+  .pos-header { flex-direction: row !important; flex-wrap: nowrap !important; align-items: center; gap: 0.5rem !important; padding: 0.55rem 0.7rem !important; }
+  .pos-header-left { width: auto !important; min-width: 0 !important; flex: 0 1 auto !important; gap: 0.5rem; }
+  .pos-header-right { width: auto !important; flex-wrap: nowrap !important; justify-content: flex-end !important; gap: 0.35rem !important; }
+  .pos-btn-label { display: none; }
+  .pos-header .pos-btn { padding: 0.4rem 0.55rem !important; }
+}
+@media (max-width: 991.98px) {
+  /* the desktop "single screen" lock would cut the cart off on small screens */
+  .pos-wrapper { height: auto; overflow: visible; }
+  .pos-main.pos-main-split { height: auto; overflow: visible; }
+}

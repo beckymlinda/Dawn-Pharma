@@ -201,7 +201,7 @@
                     <div class="card-footer bg-white py-3 border-0">
                         <div class="d-flex justify-content-between align-items-center">
                             <div class="small text-muted">
-                                Powered by EDUC Pharmacy System
+                                Powered by {{ setting('powered_by') }}
                             </div>
                             <div>
                                 {{ $expiryItems->appends(request()->query())->links() }}

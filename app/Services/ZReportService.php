@@ -135,11 +135,12 @@ class ZReportService
      */
     private function branding($settings): array
     {
-        $logo = !empty($settings['logo']) ? $settings['logo'] : 'assets/images/logo.jpeg';
-        $logoPath = public_path($logo);
+        // No uploaded logo: the email shows the business name only
+        $logo = !empty($settings['logo']) ? $settings['logo'] : null;
+        $logoPath = $logo ? public_path($logo) : '';
 
         return [
-            'name' => !empty($settings['system_name']) ? $settings['system_name'] : 'CNC Health Care',
+            'name' => !empty($settings['system_name']) ? $settings['system_name'] : setting('system_name'),
             'location' => $settings['location'] ?? null,
             'telephone' => $settings['telephone'] ?? null,
             'primary' => !empty($settings['primary_color']) ? $settings['primary_color'] : '#004d3d',

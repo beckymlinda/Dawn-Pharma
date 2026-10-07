@@ -14,7 +14,7 @@
                 </div>
                 <div>
                     <h4 class="mb-0 fw-bold">System Settings</h4>
-                    <small class="text-muted">Manage your pharmacy branding, contact info, and theme colors</small>
+                    <small class="text-muted">Manage your business details, receipt, branding and theme colors</small>
                 </div>
             </div>
 
@@ -52,24 +52,46 @@
                             </div>
                             <div class="card-body px-4 pb-4">
                                 <div class="mb-3">
-                                    <label class="form-label fw-semibold small text-uppercase text-muted">System / Pharmacy Name</label>
+                                    <label class="form-label fw-semibold small text-uppercase text-muted">Business Name</label>
                                     <input type="text" name="system_name" class="form-control"
-                                           value="{{ $settings['system_name'] ?? 'EDUC Pharmacy' }}"
-                                           placeholder="Enter pharmacy name">
+                                           value="{{ old('system_name', $settings['system_name'] ?? '') }}"
+                                           placeholder="Enter business name" required>
                                 </div>
 
                                 <div class="mb-3">
                                     <label class="form-label fw-semibold small text-uppercase text-muted">Location / Address</label>
                                     <input type="text" name="location" class="form-control"
-                                           value="{{ $settings['location'] ?? 'Area 47, Lilongwe, Malawi' }}"
-                                           placeholder="Enter address">
+                                           value="{{ old('location', $settings['location'] ?? '') }}"
+                                           placeholder="e.g. Plot 12, City Centre, Lilongwe">
+                                </div>
+
+                                <div class="row g-3 mb-3">
+                                    <div class="col-sm-6">
+                                        <label class="form-label fw-semibold small text-uppercase text-muted">Telephone Number</label>
+                                        <input type="text" name="telephone" class="form-control"
+                                               value="{{ old('telephone', $settings['telephone'] ?? '') }}"
+                                               placeholder="e.g. +265 999 000 000">
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <label class="form-label fw-semibold small text-uppercase text-muted">Email</label>
+                                        <input type="email" name="email" class="form-control"
+                                               value="{{ old('email', $settings['email'] ?? '') }}"
+                                               placeholder="shop@example.com">
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label fw-semibold small text-uppercase text-muted">TPIN / VAT Number</label>
+                                    <input type="text" name="tax_number" class="form-control"
+                                           value="{{ old('tax_number', $settings['tax_number'] ?? '') }}"
+                                           placeholder="Printed on receipts when filled in">
                                 </div>
 
                                 <div class="mb-0">
-                                    <label class="form-label fw-semibold small text-uppercase text-muted">Telephone Number</label>
-                                    <input type="text" name="telephone" class="form-control"
-                                           value="{{ $settings['telephone'] ?? '+265 999672775' }}"
-                                           placeholder="Enter phone number">
+                                    <label class="form-label fw-semibold small text-uppercase text-muted">Receipt Message</label>
+                                    <input type="text" name="receipt_footer" class="form-control"
+                                           value="{{ old('receipt_footer', $settings['receipt_footer'] ?? '') }}"
+                                           placeholder="e.g. Thank you for your purchase!">
                                 </div>
                             </div>
                         </div>
@@ -142,7 +164,7 @@
                                 <div class="upload-zone" id="logoUploadZone">
                                     {{-- Current / Preview Image --}}
                                     <div class="preview-container mb-3" id="logoPreviewContainer">
-                                        @if(isset($settings['logo']))
+                                        @if(brand_image_exists($settings['logo'] ?? null))
                                             <img src="{{ asset($settings['logo']) }}" alt="Current Logo" class="preview-image" id="logoPreview">
                                             <span class="preview-badge badge bg-success">Current</span>
                                         @else
@@ -158,7 +180,7 @@
                                     <div class="upload-input-wrap">
                                         <label for="logoInput" class="btn btn-outline-primary btn-sm w-100">
                                             <i class="bi bi-cloud-arrow-up me-1"></i>
-                                            {{ isset($settings['logo']) ? 'Change Logo' : 'Upload Logo' }}
+                                            {{ brand_image_exists($settings['logo'] ?? null) ? 'Change Logo' : 'Upload Logo' }}
                                         </label>
                                         <input type="file" name="logo" id="logoInput"
                                                class="d-none" accept="image/*">
@@ -190,7 +212,7 @@
                                 <div class="upload-zone" id="faviconUploadZone">
                                     {{-- Current / Preview Image --}}
                                     <div class="preview-container preview-container-sm mb-3" id="faviconPreviewContainer">
-                                        @if(isset($settings['favicon']))
+                                        @if(brand_image_exists($settings['favicon'] ?? null))
                                             <img src="{{ asset($settings['favicon']) }}" alt="Current Favicon" class="preview-image preview-image-sm" id="faviconPreview">
                                             <span class="preview-badge badge bg-success">Current</span>
                                         @else
@@ -206,7 +228,7 @@
                                     <div class="upload-input-wrap">
                                         <label for="faviconInput" class="btn btn-outline-primary btn-sm w-100">
                                             <i class="bi bi-cloud-arrow-up me-1"></i>
-                                            {{ isset($settings['favicon']) ? 'Change Favicon' : 'Upload Favicon' }}
+                                            {{ brand_image_exists($settings['favicon'] ?? null) ? 'Change Favicon' : 'Upload Favicon' }}
                                         </label>
                                         <input type="file" name="favicon" id="faviconInput"
                                                class="d-none" accept="image/*">

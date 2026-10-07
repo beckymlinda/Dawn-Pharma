@@ -47,7 +47,8 @@ class StockReportController extends Controller
         $perPage = $request->input('per_page', 25);
         
         $query = Product::with(['category', 'brand', 'businessLocation'])
-            ->whereColumn('current_stock', '<=', 'alert_quantity');
+            ->lowStock()
+            ->orderBy('current_stock');
             
         $products = $query->paginate($perPage);
 

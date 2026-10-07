@@ -45,7 +45,7 @@
                     </td>
                     <td>{{ \Carbon\Carbon::parse($purchase->purchase_date)->format('M d, Y') }}</td>
                     <td>{{ $purchase->reference_no }}</td>
-                    <td>{{ $purchase->business_location ?? 'EDUC Pharmacy' }}</td>
+                    <td>{{ $purchase->business_location ?? setting('system_name') }}</td>
                     <td>{{ $purchase->supplier->name ?? 'N/A' }}</td>
                     <td><span class="badge bg-{{ getStatusColor($purchase->status) }}">{{ ucfirst($purchase->status) }}</span></td>
                     <td><span class="badge bg-{{ getPaymentStatusColor($purchase->payment_status) }}">{{ ucfirst($purchase->payment_status) }}</span></td>

@@ -6,6 +6,7 @@ use Illuminate\Foundation\Configuration\Middleware;
 
 // Load custom helpers
 require_once __DIR__ . '/../app/Helpers/RegisterHelper.php';
+require_once __DIR__ . '/../app/Helpers/SettingsHelper.php';
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -19,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
         $middleware->alias([
             'permission' => \App\Http\Middleware\CheckPermission::class,
+            'role' => \App\Http\Middleware\CheckRole::class,
             'log.activity' => \App\Http\Middleware\LogUserActivity::class,
         ]);
     })

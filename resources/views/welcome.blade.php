@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ $settings['system_name'] ?? 'CNC Health Care' }} - Professional Pharmacy Management System</title>
+    <title>{{ setting('system_name') }} - Professional Pharmacy Management System</title>
     
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="{{ isset($settings['favicon']) ? asset($settings['favicon']) : asset('assets/images/favicon.png') }}">
@@ -24,10 +24,10 @@
     <div class="welcome-container d-flex align-items-center justify-content-center min-vh-100">
         <div class="content-card text-center p-5 shadow-lg rounded-5">
             <div class="logo-wrapper mb-4">
-                <img src="{{ isset($settings['logo']) ? asset($settings['logo']) : asset('assets/images/logo.jpeg') }}" alt="{{ $settings['system_name'] ?? 'CNC Health Care' }}" class="main-logo shadow-sm rounded-circle p-2 bg-white">
+                <img src="{{ brand_logo_url() }}" alt="{{ setting('system_name') }}" class="main-logo shadow-sm rounded-circle p-2 bg-white">
             </div>
             
-            <h1 class="brand-title mb-2">{{ $settings['system_name'] ?? 'CNC Health Care' }}</h1>
+            <h1 class="brand-title mb-2">{{ setting('system_name') }}</h1>
             <p class="brand-tagline mb-5 text-muted">Advanced Pharmacy Management & Care</p>
             
             <div class="row g-3 justify-content-center mb-5">
