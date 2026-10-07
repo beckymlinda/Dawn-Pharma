@@ -197,6 +197,15 @@ class StockAdjustmentController extends Controller
 
             DB::commit();
 
+            if ($validated['adjustment_type'] === 'subtract') {
+                $value = $validated['quantity'] * (float) ($product->purchase_price ?? 0);
+                \App\Models\IntegrityEvent::record('stock_removed', $value >= 50000 ? 'high' : 'medium',
+                    "Removed {$validated['quantity']} x {$product->name} from stock (" . formatCurrency($value) . " at cost). Reason: {$validated['reason']}",
+                    ['product_id' => $product->id, 'amount' => $value, 'details' => [
+                        'previous_quantity' => $previousQuantity, 'new_quantity' => $newQuantity, 'reason' => $validated['reason'],
+                    ]]);
+            }
+
             return redirect()->route('stock-adjustments.index')
                 ->with('success', 'Stock adjustment completed successfully!');
 

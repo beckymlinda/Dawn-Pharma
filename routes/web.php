@@ -15,6 +15,9 @@ use App\Http\Controllers\ProfitLossController;
 use App\Http\Controllers\StockReportController;
 use App\Http\Controllers\StockExpiryReportController;
 use App\Http\Controllers\StockAdjustmentController;
+use App\Http\Controllers\ProductReportController;
+use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\IntegrityController;
 use App\Http\Controllers\UserManagementController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ActivityLogController;
@@ -24,6 +27,13 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', function () {
     return view('welcome');
 });
+
+// Fresh CSRF token for long-open pages (used by public/js/session-guard.js to prevent 419 errors).
+// Also keeps the session alive. Works logged in or out, so the login page never goes stale.
+Route::get('/session/token', function () {
+    return response()->json(['token' => csrf_token(), 'authenticated' => auth()->check()])
+        ->header('Cache-Control', 'no-store, no-cache, must-revalidate');
+})->name('session.token');
 
  
  use Illuminate\Support\Facades\Artisan;
@@ -93,6 +103,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('pos/cart/update', [POSController::class, 'updateCart'])->name('pos.cart.update');
     Route::post('pos/cart/clear', [POSController::class, 'clearCart'])->name('pos.cart.clear');
     Route::get('pos/cart/get', [POSController::class, 'getCart'])->name('pos.cart.get');
+    Route::post('pos/integrity/void', [IntegrityController::class, 'reportVoid'])->name('pos.integrity.void');
     Route::post('pos/finalize', [POSController::class, 'finalizeSale'])->name('pos.finalize')->middleware(['log.activity']);
     Route::get('pos/recent/sales', [POSController::class, 'getRecentSales'])->name('pos.recent.sales.data');
     Route::get('pos/recent', [POSController::class, 'recentSales'])->name('pos.recent.sales');
@@ -127,6 +138,8 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/reports/register-report/export', [RegisterReportController::class, 'exportCsv'])->name('reports.register-report.export');
     Route::get('/reports/stock-expiry', [StockExpiryReportController::class, 'index'])->name('reports.stock-expiry');
     Route::get('/reports/stock-expiry/export/csv', [StockExpiryReportController::class, 'exportCsv'])->name('reports.stock-expiry.export.csv');
+    Route::get('/reports/products', [ProductReportController::class, 'index'])->name('reports.products.index')->middleware('permission:view_stock_report');
+    Route::get('/reports/products/{product}', [ProductReportController::class, 'show'])->name('reports.products.show')->middleware('permission:view_stock_report');
     Route::get('/reports/low-stock', [StockReportController::class, 'lowStock'])->name('reports.low-stock');
     
     // Stock Report
@@ -176,6 +189,21 @@ Route::middleware(['auth'])->group(function () {
     Route::delete('/activity-log/{activityLog}', [ActivityLogController::class, 'destroy'])->name('activity-log.destroy');
     Route::get('/activity-log/export', [ActivityLogController::class, 'export'])->name('activity-log.export');
     Route::post('/activity-log/clear-old', [ActivityLogController::class, 'clearOldLogs'])->name('activity-log.clear-old');
+
+    // Loss Prevention
+    Route::get('/loss-prevention', [IntegrityController::class, 'index'])->name('integrity.index');
+    Route::post('/loss-prevention/settings', [IntegrityController::class, 'updateSettings'])->name('integrity.settings');
+    Route::get('/loss-prevention/{event}', [IntegrityController::class, 'show'])->name('integrity.show');
+    Route::patch('/loss-prevention/{event}/review', [IntegrityController::class, 'review'])->name('integrity.review');
+
+    // Notifications
+    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::post('/notifications/settings', [NotificationController::class, 'updateSettings'])->name('notifications.settings');
+    Route::post('/notifications/recipients', [NotificationController::class, 'storeRecipient'])->name('notifications.recipients.store');
+    Route::patch('/notifications/recipients/{recipient}', [NotificationController::class, 'toggleRecipient'])->name('notifications.recipients.toggle');
+    Route::delete('/notifications/recipients/{recipient}', [NotificationController::class, 'destroyRecipient'])->name('notifications.recipients.destroy');
+    Route::get('/notifications/z-report/preview', [NotificationController::class, 'preview'])->name('notifications.zreport.preview');
+    Route::post('/notifications/z-report/send', [NotificationController::class, 'sendTest'])->name('notifications.zreport.send');
 
     // Settings
     Route::get('/settings', [\App\Http\Controllers\SettingController::class, 'index'])->name('settings.index');

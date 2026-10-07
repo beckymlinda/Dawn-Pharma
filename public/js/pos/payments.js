@@ -85,7 +85,7 @@ POSPayments.setupPaymentModal = function() {
                         </select>
                     </div>
                     <div class="col-md-6">
-                        <input type="number" class="form-control payment-amount" placeholder="Amount" min="0" step="0.01" value="${cartTotal.toFixed(2)}" onchange="updatePaymentSummary()">
+                        <input type="number" class="form-control payment-amount" placeholder="Amount" min="0" step="1" value="${Number(cartTotal.toFixed(2))}" onchange="updatePaymentSummary()">
                     </div>
                     <div class="col-md-2">
                         <button type="button" class="btn btn-outline-danger btn-sm" onclick="removePaymentMethod(0)" style="display: none;">
@@ -284,7 +284,7 @@ POSPayments.addPaymentMethod = function() {
                     </select>
                 </div>
                 <div class="col-md-6">
-                    <input type="number" class="form-control payment-amount" placeholder="Amount" min="0" step="0.01" value="${remainingBalance.toFixed(2)}" onchange="updatePaymentSummary()">
+                    <input type="number" class="form-control payment-amount" placeholder="Amount" min="0" step="1" value="${Number(remainingBalance.toFixed(2))}" onchange="updatePaymentSummary()">
                 </div>
                 <div class="col-md-2">
                     <button type="button" class="btn btn-outline-danger btn-sm" onclick="removePaymentMethod(${paymentMethodIndex})">

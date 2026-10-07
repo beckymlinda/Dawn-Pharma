@@ -215,12 +215,12 @@ function addProductRow() {
         <div class="col-md-2">
             <label class="form-label fw-semibold small">Quantity: <span class="text-danger">*</span></label>
             <input type="number" class="form-control form-control-sm quantity-input" 
-                   name="products[${productRowCounter}][quantity]" placeholder="0" step="0.01" min="0.01" required>
+                   name="products[${productRowCounter}][quantity]" placeholder="0" step="1" min="1" required>
         </div>
         <div class="col-md-2">
             <label class="form-label fw-semibold small">Unit Cost:</label>
             <input type="number" class="form-control form-control-sm unit-cost-input" 
-                   name="products[${productRowCounter}][unit_cost]" placeholder="0.00" step="0.01" min="0" readonly>
+                   name="products[${productRowCounter}][unit_cost]" placeholder="0" step="1" min="0" readonly>
         </div>
         <div class="col-md-2">
             <label class="form-label fw-semibold small">Expiry Date:</label>

@@ -10,7 +10,7 @@ class StockHistory extends Model
     use HasFactory;
 
     protected $fillable = [
-        'product_id', 'type', 'quantity_change', 'new_quantity',
+        'product_id', 'user_id', 'type', 'quantity_change', 'new_quantity',
         'unit_cost', 'unit_price', 'date', 'reference_no',
         'customer_supplier', 'notes', 'business_location_id'
     ];
@@ -23,9 +23,24 @@ class StockHistory extends Model
         'date' => 'date'
     ];
 
+    protected static function booted()
+    {
+        // Record who caused the stock movement
+        static::creating(function (StockHistory $history) {
+            if (empty($history->user_id) && auth()->check()) {
+                $history->user_id = auth()->id();
+            }
+        });
+    }
+
     public function product()
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
     }
 
     public function businessLocation()

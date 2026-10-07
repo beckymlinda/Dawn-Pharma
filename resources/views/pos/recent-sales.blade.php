@@ -308,13 +308,15 @@
                                         <a href="{{ route('sales.edit', $sale->id) }}" class="action-btn edit" title="Edit Sale">
                                             <i class="bi bi-pencil"></i>
                                         </a>
-                                        <form action="{{ route('sales.destroy', $sale->id) }}" method="POST" class="d-inline m-0 p-0" onsubmit="return confirm('Are you sure you want to delete this transaction? This action will reverse inventory.');">
+                                        @if(auth()->user()->hasPermission('delete_pos_sell'))
+                                        <form action="{{ route('sales.destroy', $sale->id) }}" method="POST" class="d-inline m-0 p-0" onsubmit="return confirm('Are you sure you want to delete this transaction? This action will reverse inventory and is recorded in Loss Prevention.');">
                                             @csrf
                                             @method('DELETE')
                                             <button type="submit" class="action-btn delete" title="Delete Sale">
                                                 <i class="bi bi-trash"></i>
                                             </button>
                                         </form>
+                                        @endif
                                     </div>
                                 </td>
                             </tr>

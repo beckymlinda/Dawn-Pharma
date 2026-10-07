@@ -30,7 +30,7 @@
                                        class="form-control @error('opening_cash') is-invalid @enderror" 
                                        id="opening_cash" 
                                        name="opening_cash" 
-                                       step="0.01" 
+                                       step="1" 
                                        min="0" 
                                        value="{{ old('opening_cash', 0) }}" 
                                        required>

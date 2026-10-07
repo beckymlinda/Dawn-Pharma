@@ -460,6 +460,10 @@ POSCart.updateQuantityByProductId = function(productId, change, newQuantity = nu
         targetQty = product.current_stock;
     }
     
+    if (targetQty < currentQty) {
+        POSCart.reportVoid('line_void', [currentItem], currentQty - targetQty, 'quantity reduced');
+    }
+
     POSCart.state.items[itemIndex].quantity = targetQty;
     POSCart.state.items[itemIndex].subtotal = targetQty * parseFloat(currentItem.price || currentItem.selling_price || 0);
     POSCart.renderCart();
@@ -524,6 +528,9 @@ POSCart.removeFromCartByProductId = function(productId) {
         return;
     }
     
+    const removedItem = POSCart.state.items[itemIndex];
+    POSCart.reportVoid('line_void', [removedItem], parseFloat(removedItem.quantity || 0), 'removed');
+
     POSCart.state.items.splice(itemIndex, 1);
     POSCart.renderCart();
     localStorage.setItem('pos_local_cart', JSON.stringify(POSCart.state.items));
@@ -531,10 +538,50 @@ POSCart.removeFromCartByProductId = function(productId) {
 };
 
 /**
+ * Report a void (item removed / quantity reduced / cart cleared) to the
+ * Loss Prevention log. Fire-and-forget: never blocks the cashier.
+ */
+POSCart.reportVoid = function(type, items, removedQuantity, reason) {
+    try {
+        const payload = {
+            type: type,
+            reason: reason,
+            removed_quantity: removedQuantity,
+            items: items.map(function(item) {
+                return {
+                    product_id: item.product_id || item.id || (item.product && item.product.id) || null,
+                    name: item.name || (item.product && item.product.name) || '',
+                    quantity: parseFloat(item.quantity || 0),
+                    price: parseFloat(item.price || item.selling_price || 0)
+                };
+            })
+        };
+        fetch('/pos/integrity/void', {
+            method: 'POST',
+            keepalive: true,
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': POSApp.utils.getCsrfToken()
+            },
+            body: JSON.stringify(payload)
+        }).catch(function() {});
+    } catch (e) {
+        console.warn('Could not report cart void', e);
+    }
+};
+
+/**
  * Failsafe: Clear cart completely
  */
 POSCart.clearCartCompletely = function() {
     console.log('🧹 Clearing cart completely...');
+    try {
+        const leftover = POSCart.state.items.length ? POSCart.state.items : JSON.parse(localStorage.getItem('pos_local_cart') || '[]');
+        if (leftover.length) {
+            POSCart.reportVoid('cart_cleared', leftover, null, 'unpaid cart discarded when the POS page was reloaded');
+        }
+    } catch (e) {}
     POSCart.state.items = [];
     POSCart.renderCart();
     localStorage.removeItem('pos_local_cart');
@@ -569,7 +616,11 @@ POSCart.clearCart = function() {
         console.log('⛔ Cart clear cancelled by user');
         return;
     }
-    
+
+    if (POSCart.state.items.length) {
+        POSCart.reportVoid('cart_cleared', POSCart.state.items, null, 'cleared by user');
+    }
+
     POSCart.state.items = [];
     POSCart.renderCart();
     localStorage.removeItem('pos_local_cart');

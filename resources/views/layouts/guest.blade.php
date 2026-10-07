@@ -4,6 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="session-auth" content="{{ auth()->check() ? '1' : '0' }}">
+    <script src="{{ asset('js/session-guard.js') }}?v={{ filemtime(public_path('js/session-guard.js')) }}"></script>
 
     <title>{{ $settings['system_name'] ?? 'CNC Health Care' }} - {{ __('Authentication') }}</title>
     

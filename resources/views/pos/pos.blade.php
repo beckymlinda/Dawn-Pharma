@@ -11,6 +11,8 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <!-- CSRF Token -->
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="session-auth" content="{{ auth()->check() ? '1' : '0' }}">
+    <script src="{{ asset('js/session-guard.js') }}?v={{ filemtime(public_path('js/session-guard.js')) }}"></script>
     <!-- Favicon -->
     <link rel="icon" type="image/jpeg" href="{{ isset($settings['favicon']) ? asset($settings['favicon']) : asset('assets/images/logo.jpeg') }}">
     <style>
@@ -232,7 +234,7 @@
               </div>
               <div class="col-md-4">
                 <label class="form-label fw-semibold small">Amount:*</label>
-                <input type="number" class="form-control form-control-sm payment-amount" data-index="0" step="0.01" placeholder="0.00">
+                <input type="number" class="form-control form-control-sm payment-amount" data-index="0" step="1" placeholder="0">
               </div>
               <div class="col-md-3">
                 <label class="form-label fw-semibold small">&nbsp;</label>
@@ -271,7 +273,7 @@
             <div class="row mt-3 border-top pt-3" id="cashDetailsSection" style="background-color: #e0f2fe; border-radius: 8px; padding: 10px;">
               <div class="col-md-5">
                 <label class="form-label text-dark fw-bold" style="font-size: 1.1rem;">Amount Given:</label>
-                <input type="number" id="amountGiven" class="form-control form-control-lg border-primary shadow-sm" placeholder="0.00" step="0.01" oninput="updatePaymentSummary()" style="height: 60px; font-size: 1.5rem; font-weight: bold; width: 90%;">
+                <input type="number" id="amountGiven" class="form-control form-control-lg border-primary shadow-sm" placeholder="0" step="1" oninput="updatePaymentSummary()" style="height: 60px; font-size: 1.5rem; font-weight: bold; width: 90%;">
               </div>
               <div class="col-md-7 d-flex flex-column justify-content-center">
                 <label class="form-label text-dark fw-bold" style="font-size: 1.1rem;">Change To Give:</label>
@@ -456,25 +458,15 @@
 
     // Receipt generation and printing are now handled by POSPayments module
 
-    // Session Keep-Alive to prevent 419 Page Expired
-    setInterval(() => {
-        fetch('/keepalive', {
-            method: 'GET',
-            credentials: 'same-origin'
-        }).then(response => {
-            if (!response.ok) {
-                throw new Error('Keepalive response not ok: ' + response.status);
-            }
-            console.log('Session keepalive successful');
-        }).catch(error => console.error('Keepalive failed', error));
-    }, 300000); // Refresh every 5 minutes
+    // Session keep-alive and CSRF token refresh are handled by public/js/session-guard.js
 </script>
 
 <!-- Global fetch interceptor for Laravel CSRF and JSON headers -->
 <script>
-const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 const originalFetch = window.fetch;
 window.fetch = function(url, options = {}) {
+    // Read the token at request time: session-guard.js keeps the meta tag up to date
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
     options.headers = {
         ...(options.headers || {}),
         'X-CSRF-TOKEN': csrfToken || '',

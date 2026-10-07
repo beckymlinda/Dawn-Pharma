@@ -15,7 +15,7 @@
             <label for="email" class="form-label small fw-bold text-muted">Email Address</label>
             <div class="input-group">
                 <span class="input-group-text bg-light border-end-0"><i class="fas fa-envelope text-muted"></i></span>
-                <input id="email" class="form-control border-start-0 bg-light" type="email" name="email" :value="old('email')" required autofocus autocomplete="username" placeholder="name@example.com" />
+                <input id="email" class="form-control border-start-0 bg-light" type="email" name="email" value="{{ old('email') }}" required autofocus autocomplete="username" placeholder="name@example.com" />
             </div>
             <x-input-error :messages="$errors->get('email')" class="mt-2 text-danger small" />
         </div>

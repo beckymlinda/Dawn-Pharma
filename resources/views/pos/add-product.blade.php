@@ -137,7 +137,7 @@
                                         <div class="input-group">
                                             <span class="input-group-text border-0 bg-light">MWK</span>
                                             <input type="number" class="form-control border-0 bg-light shadow-none fw-bold" 
-                                                   name="purchase_price" step="0.01" min="0" value="{{ old('purchase_price') }}" required>
+                                                   name="purchase_price" step="1" min="0" value="{{ old('purchase_price') }}" required>
                                         </div>
                                     </div>
                                     <div class="col-md-6">
@@ -145,7 +145,7 @@
                                         <div class="input-group">
                                             <span class="input-group-text border-0 bg-light">MWK</span>
                                             <input type="number" class="form-control border-0 bg-light shadow-none fw-bold text-primary" 
-                                                   name="selling_price" step="0.01" min="0" value="{{ old('selling_price') }}" required>
+                                                   name="selling_price" step="1" min="0" value="{{ old('selling_price') }}" required>
                                         </div>
                                     </div>
                                     <div class="col-12">
@@ -187,12 +187,12 @@
                                     <div class="col-md-12">
                                         <label class="form-label small fw-bold text-muted">Opening Quantity</label>
                                         <input type="number" class="form-control border-0 bg-light shadow-none fw-bold" 
-                                               name="purchase_quantity" step="0.01" min="0" value="{{ old('purchase_quantity', 0) }}">
+                                               name="purchase_quantity" step="1" min="0" value="{{ old('purchase_quantity', 0) }}">
                                     </div>
                                     <div class="col-md-12">
                                         <label class="form-label small fw-bold text-muted">Alert Quantity</label>
                                         <input type="number" class="form-control border-0 bg-light shadow-none" 
-                                               name="alert_quantity" step="0.01" min="0" value="{{ old('alert_quantity', 10) }}">
+                                               name="alert_quantity" step="1" min="0" value="{{ old('alert_quantity', 10) }}">
                                         <small class="text-muted x-small">System will alert when stock falls below this</small>
                                     </div>
                                     <div class="col-md-12">

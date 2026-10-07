@@ -1,6 +1,14 @@
 @extends('layouts.app')
 
 @section('content')
+@php
+    // Blind close: cashiers must count the drawer without seeing what the system expects
+    $isAdmin = auth()->user()->hasRole('admin') || auth()->user()->hasRole('super_admin');
+    // One switch in Loss Prevention settings: when on, everyone must count the drawer and non-admins can't see the expected cash
+    $countRequired = \App\Models\IntegrityEvent::cashCountRequired();
+    $blind = $countRequired && !$isAdmin;
+    $money = fn ($v, $prefix = 'MWK ') => $blind ? '••••••' : $prefix . number_format($v, 2);
+@endphp
 <style>
     :root {
         --brand-blue: #0d6efd;
@@ -171,7 +179,7 @@
                         <i class="bi bi-cart-check"></i>
                     </div>
                     <div class="text-muted small fw-bold text-uppercase">Total Sales</div>
-                    <div class="h3 fw-bold mb-0">MWK {{ number_format($totals['total_sales'], 2) }}</div>
+                    <div class="h3 fw-bold mb-0">{{ $money($totals['total_sales']) }}</div>
                     <div class="text-success mt-2 small">
                         <i class="bi bi-arrow-up-short"></i> {{ $counts['count_total_sales'] ?? 0 }} Transactions
                     </div>
@@ -234,7 +242,7 @@
                                         </div>
                                     </td>
                                     <td class="text-center fw-bold">{{ $counts['count_'.$method['key']] }}</td>
-                                    <td class="text-end fw-bold">MWK {{ number_format($totals['total_'.$method['key']], 2) }}</td>
+                                    <td class="text-end fw-bold">{{ $money($totals['total_'.$method['key']]) }}</td>
                                 </tr>
                                 @endif
                             @endforeach
@@ -265,16 +273,20 @@
                     </div>
                     <div class="d-flex justify-content-between mb-3 border-bottom pb-3">
                         <span class="text-muted">Cash Sales Only</span>
-                        <span class="fw-bold">MWK {{ number_format($totals['total_cash'] ?? 0, 2) }}</span>
+                        <span class="fw-bold">{{ $money($totals['total_cash'] ?? 0) }}</span>
                     </div>
                     <div class="d-flex justify-content-between p-3 bg-white rounded-3 shadow-sm mb-4">
                         <span class="fw-bold text-dark fs-5">Expected in Drawer</span>
-                        <span class="fw-bold text-primary fs-5">MWK {{ number_format(($totals['total_cash'] ?? 0) + $register->opening_cash, 2) }}</span>
+                        <span class="fw-bold text-primary fs-5">{{ $money(($totals['total_cash'] ?? 0) + $register->opening_cash) }}</span>
                     </div>
 
                     <div class="alert alert-warning border-0 shadow-sm small mb-0">
                         <i class="bi bi-info-circle-fill me-2"></i>
-                        Confirm the amount in your drawer matches the expected total before closing.
+                        @if($countRequired)
+                            Count all the cash in your drawer. You will enter the amount when you close the register.
+                        @else
+                            Confirm the amount in your drawer matches the expected total before closing.
+                        @endif
                     </div>
                 </div>
             </div>
@@ -331,7 +343,7 @@
                 <tr>
                     <td style="text-align:left;">{{ $method['label'] }}</td>
                     <td style="text-align:center;">{{ $counts['count_'.$method['key']] }}</td>
-                    <td style="text-align:right;">{{ number_format($totals['total_'.$method['key']], 2) }}</td>
+                    <td style="text-align:right;">{{ $money($totals['total_'.$method['key']], '') }}</td>
                 </tr>
                 @endif
             @endforeach
@@ -346,13 +358,13 @@
     <div style="border-top: 1px solid #000; margin-bottom: 5px;"></div>
     <div class="d-flex justify-content-between fw-bold mb-2" style="font-size:16px;">
         <span>TOTAL SALES:</span>
-        <span>MWK {{ number_format($totals['total_sales'], 2) }}</span>
+        <span>{{ $money($totals['total_sales']) }}</span>
     </div>
     
     <div style="border-top: 2px solid #000; margin-bottom: 10px; margin-top: 15px;"></div>
     <div class="d-flex justify-content-between fw-bold mb-1" style="font-size:18px;">
         <span>TOTAL IN DRAWER:</span>
-        <span>MWK {{ number_format(($totals['total_cash'] ?? 0) + $register->opening_cash, 2) }}</span>
+        <span>{{ $money(($totals['total_cash'] ?? 0) + $register->opening_cash) }}</span>
     </div>
     <div style="font-size:12px; color:#555; text-align:right; margin-bottom: 20px;">
         (Opening Cash + Cash Sales)
@@ -370,26 +382,47 @@
             <div class="modal-header border-0 pb-0">
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body text-center py-4">
-                <div class="text-danger mb-3" style="font-size: 3.5rem;">
-                    <i class="bi bi-exclamation-triangle-fill"></i>
+            <form action="{{ route('register.update', $register->id) }}" method="POST" class="m-0">
+                @csrf
+                @method('PATCH')
+                <div class="modal-body text-center py-4">
+                    <div class="text-danger mb-3" style="font-size: 3.5rem;">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                    </div>
+                    <h4 class="fw-bold text-dark mb-2">Close Register?</h4>
+                    <p class="text-muted px-3 mb-3">This will end your session and finalize all sales records for this shift.</p>
+
+                    @if($countRequired)
+                    <div class="text-start px-3">
+                        <label for="countedCash" class="form-label fw-semibold">Cash counted in drawer (MWK) <span class="text-danger">*</span></label>
+                        <input type="number" step="1" min="0" name="counted_cash" id="countedCash"
+                               class="form-control form-control-lg @error('counted_cash') is-invalid @enderror"
+                               value="{{ old('counted_cash') }}" placeholder="0" required>
+                        @error('counted_cash')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
+                        <div class="form-text">Include the opening float. Count notes and coins; do not copy a figure from the screen.</div>
+                    </div>
+                    @endif
                 </div>
-                <h4 class="fw-bold text-dark mb-2">Close Register?</h4>
-                <p class="text-muted px-3 mb-0">Are you sure you want to close the register? This will end your active session and finalize all sales records for today.</p>
-            </div>
-            <div class="modal-footer border-0 d-flex justify-content-center gap-2 pb-4 pt-0">
-                <button type="button" class="btn btn-light px-4 py-2 rounded-pill fw-semibold" data-bs-dismiss="modal">
-                    No, Cancel
-                </button>
-                <form action="{{ route('register.update', $register->id) }}" method="POST" class="m-0">
-                    @csrf
-                    @method('PATCH')
+                <div class="modal-footer border-0 d-flex justify-content-center gap-2 pb-4 pt-0">
+                    <button type="button" class="btn btn-light px-4 py-2 rounded-pill fw-semibold" data-bs-dismiss="modal">
+                        No, Cancel
+                    </button>
                     <button type="submit" class="btn btn-danger px-4 py-2 rounded-pill fw-semibold">
                         Yes, Close Register
                     </button>
-                </form>
-            </div>
+                </div>
+            </form>
         </div>
     </div>
 </div>
+@if($errors->has('counted_cash'))
+<script>
+    // Re-open the close dialog so the cashier can enter the counted cash
+    document.addEventListener('DOMContentLoaded', function () {
+        new bootstrap.Modal(document.getElementById('confirmCloseModal')).show();
+    });
+</script>
+@endif
 @endsection

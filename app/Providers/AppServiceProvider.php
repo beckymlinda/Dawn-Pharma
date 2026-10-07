@@ -27,6 +27,20 @@ class AppServiceProvider extends ServiceProvider
             return $user->hasPermission($ability) ? true : null;
         });
 
+        // Loss prevention: record wrong-password attempts on existing accounts (password is never stored)
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Auth\Events\Failed::class, function ($event) {
+            if (!$event->user) {
+                return;
+            }
+            $recent = \App\Models\IntegrityEvent::where('type', 'failed_login')
+                ->where('user_id', $event->user->id)
+                ->where('created_at', '>=', now()->subMinutes(15))
+                ->count();
+            \App\Models\IntegrityEvent::record('failed_login', $recent >= 4 ? 'high' : 'low',
+                "Wrong password entered for {$event->user->email}" . ($recent >= 4 ? ' (' . ($recent + 1) . ' attempts in 15 minutes)' : ''),
+                ['user_id' => $event->user->id, 'register_id' => null]);
+        });
+
         // Share settings globally
         try {
             $settings = \App\Models\Setting::pluck('value', 'key')->toArray();

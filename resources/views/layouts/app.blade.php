@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="session-auth" content="{{ auth()->check() ? '1' : '0' }}">
+    <script src="{{ asset('js/session-guard.js') }}?v={{ filemtime(public_path('js/session-guard.js')) }}"></script>
     <title>@yield('title', $settings['system_name'] ?? 'CNC Health Care')</title>
     <!-- Favicon -->
     <link rel="icon" type="image/jpeg" href="{{ isset($settings['favicon']) ? asset($settings['favicon']) : asset('assets/images/logo.jpeg') }}">
@@ -212,6 +214,14 @@
             </a>
             @endif
 
+            <!-- Product Report -->
+            @if(auth()->user()->hasPermission('view_stock_report'))
+            <a href="{{ route('reports.products.index') }}"
+               class="list-group-item list-group-item-action border-0 {{ request()->routeIs('reports.products.*') ? 'active' : '' }}">
+                <i class="bi bi-capsule me-2"></i> Product Report
+            </a>
+            @endif
+
             <!-- Low Stock Report -->
             @if(auth()->user()->hasPermission('view_stock_report'))
             <a href="{{ route('reports.low-stock') }}"
@@ -261,6 +271,22 @@
             </a>
             @endif
         </div>
+        @endif
+
+        <!-- Loss Prevention -->
+        @if(auth()->user()->hasRole('super_admin') || auth()->user()->hasRole('admin'))
+        <a href="{{ route('integrity.index') }}"
+           class="list-group-item list-group-item-action p-3 {{ request()->routeIs('integrity.*') ? 'active' : '' }}">
+            <i class="bi bi-shield-exclamation me-2"></i> Loss Prevention
+        </a>
+        @endif
+
+        <!-- Notifications -->
+        @if(auth()->user()->hasRole('super_admin') || auth()->user()->hasRole('admin'))
+        <a href="{{ route('notifications.index') }}"
+           class="list-group-item list-group-item-action p-3 {{ request()->routeIs('notifications.*') ? 'active' : '' }}">
+            <i class="bi bi-bell-fill me-2"></i> Notifications
+        </a>
         @endif
 
         <!-- Settings -->
@@ -577,18 +603,7 @@
             console.log('Mobile sidebar initialized as hidden');
         }
 
-        // Session Keep-Alive to prevent 419 Page Expired
-        setInterval(function() {
-            fetch('/keepalive', {
-                method: 'GET',
-                credentials: 'same-origin'
-            }).then(response => {
-                if (!response.ok) {
-                    throw new Error('Keepalive response not ok: ' + response.status);
-                }
-                console.log('Session keepalive successful');
-            }).catch(error => console.error('Keepalive failed', error));
-        }, 300000); // Refresh every 5 minutes
+        // Session keep-alive and CSRF token refresh are handled by public/js/session-guard.js
     });
 </script>
 

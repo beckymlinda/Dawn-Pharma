@@ -66,7 +66,7 @@
                             <div class="col-lg-4 col-md-12 mb-3">
                                 <label class="form-label fw-semibold">New Selling Price (Optional)</label>
                                 <input type="number" class="form-control" name="new_selling_price" 
-                                       step="0.01" min="0" placeholder="Leave empty to keep current price">
+                                       step="1" min="0" placeholder="Leave empty to keep current price">
                                 @error('new_selling_price')
                                     <div class="invalid-feedback d-block">{{ $message }}</div>
                                 @enderror
@@ -75,7 +75,7 @@
                             <div class="col-lg-4 col-md-12 mb-3">
                                 <label class="form-label fw-semibold">New Purchase Price (Optional)</label>
                                 <input type="number" class="form-control" name="new_purchase_price" 
-                                       step="0.01" min="0" placeholder="Leave empty to keep current price">
+                                       step="1" min="0" placeholder="Leave empty to keep current price">
                                 @error('new_purchase_price')
                                     <div class="invalid-feedback d-block">{{ $message }}</div>
                                 @enderror

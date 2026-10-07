@@ -128,11 +128,11 @@
                                     </td>
                                     <td>
                                         <input type="number" class="form-control form-control-sm quantity" name="quantities[]" 
-                                               placeholder="0.00" step="0.01" min="0.01" value="1" required>
+                                               placeholder="0" step="1" min="1" value="1" required>
                                     </td>
                                     <td>
                                         <input type="number" class="form-control form-control-sm unit-cost" name="unit_costs[]" 
-                                               placeholder="0.00" step="0.01" min="0" value="0.00" required>
+                                               placeholder="0" step="1" min="0" value="0" required>
                                     </td>
                                     <td>
                                         <input type="date" class="form-control form-control-sm expiry-date" name="expiry_dates[]" 
@@ -140,11 +140,11 @@
                                     </td>
                                     <td>
                                         <input type="number" class="form-control form-control-sm discount" name="discounts[]" 
-                                               placeholder="0" step="0.01" min="0" max="100" value="0">
+                                               placeholder="0" step="1" min="0" max="100" value="0">
                                     </td>
                                     <td>
                                         <input type="number" class="form-control form-control-sm tax" name="taxes[]" 
-                                               placeholder="0" step="0.01" min="0" max="100" value="0">
+                                               placeholder="0" step="1" min="0" max="100" value="0">
                                     </td>
                                     <td>
                                         <input type="text" class="form-control form-control-sm line-total" readonly placeholder="0.00">

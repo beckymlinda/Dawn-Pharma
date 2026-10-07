@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Register;
+use App\Services\IntegrityMonitor;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
@@ -168,6 +169,8 @@ class RegisterController extends Controller
             return back()->with('error', 'Register is already closed.');
         }
 
+        $request->validate(['counted_cash' => 'nullable|numeric|min:0']);
+
         // Closing cash is total of all transactions
         $closingCash = $register->sales()->sum('total_amount');
 
@@ -175,7 +178,7 @@ class RegisterController extends Controller
         $register->update([
             'closing_cash' => $closingCash,
             'closed_at' => now(),
-        ]);
+        ] + IntegrityMonitor::closeRegister($register, $request->input('counted_cash')));
 
         return redirect()->route('dashboard')
             ->with('success', 'Register closed successfully. Total: MWK ' . number_format($closingCash, 2));
@@ -209,12 +212,14 @@ class RegisterController extends Controller
                 ], 422);
             }
 
+            $request->validate(['counted_cash' => 'nullable|numeric|min:0']);
+
             $closingCash = $register->sales()->sum('total_amount');
 
             $register->update([
                 'closing_cash' => $closingCash,
                 'closed_at' => now(),
-            ]);
+            ] + IntegrityMonitor::closeRegister($register, $request->input('counted_cash')));
 
             return response()->json([
                 'success' => true,
@@ -244,6 +249,10 @@ class RegisterController extends Controller
             return back()->with('error', 'Register is already closed.');
         }
 
+        $request->validate(['counted_cash' => (\App\Models\IntegrityEvent::cashCountRequired() ? 'required' : 'nullable') . '|numeric|min:0'], [
+            'counted_cash.required' => 'Count the cash in the drawer and enter the amount before closing.',
+        ]);
+
         // Closing cash is total of all transactions
         $closingCash = $register->sales()->sum('total_amount');
 
@@ -251,7 +260,7 @@ class RegisterController extends Controller
         $register->update([
             'closing_cash' => $closingCash,
             'closed_at' => now(),
-        ]);
+        ] + IntegrityMonitor::closeRegister($register, $request->input('counted_cash')));
 
         return redirect()->route('dashboard')
             ->with('success', 'Register closed successfully. Total: MWK ' . number_format($closingCash, 2));

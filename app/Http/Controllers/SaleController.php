@@ -10,6 +10,9 @@ use App\Models\Brand;
 use App\Models\User;
 use App\Models\Payment;
 use App\Helpers\PaymentMethods;
+use App\Models\IntegrityEvent;
+use App\Services\IntegrityMonitor;
+use App\Services\SaleEditor;
 use Illuminate\Http\Request;
 
 class SaleController extends Controller
@@ -292,6 +295,13 @@ class SaleController extends Controller
             'amount' => $data['total_paid'] ?? $data['total_amount']
         ]);
 
+        if (!$sale->register_id) {
+            IntegrityEvent::record('sale_without_register', 'medium',
+                "Sale {$sale->invoice_no} of " . formatCurrency($sale->total_amount) . ' recorded outside the POS, without an open register',
+                ['sale_id' => $sale->id, 'invoice_no' => $sale->invoice_no, 'amount' => $sale->total_amount]);
+        }
+        IntegrityMonitor::checkCompletedSale($sale);
+
         return redirect()->route('sales.show', $sale->id);
     }
 
@@ -303,151 +313,99 @@ class SaleController extends Controller
 
     public function edit($id)
     {
-        $sale = Sale::with('items.product')->findOrFail($id);
-        $products = Product::with('brand', 'category')->orderBy('name')->get();
-        $categories = Category::orderBy('name')->get();
-        $brands = Brand::orderBy('name')->get();
-        
-        return view('pos.sale-edit', compact('sale', 'products', 'categories', 'brands'));
+        $sale = Sale::with(['items.product', 'payments', 'register.user'])->findOrFail($id);
+
+        if ($denied = SaleEditor::denialReason($sale, auth()->user())) {
+            return redirect()->route('sales.show', $sale->id)->with('error', $denied);
+        }
+
+        $isSupervisor = SaleEditor::isSupervisor(auth()->user());
+        $lockedPrices = SaleEditor::lockedPrices($sale);
+        // Stock that can go on this sale = what's on the shelf + what this sale already holds
+        $originalQty = $sale->items->groupBy('product_id')->map->sum('quantity');
+
+        // Everything the page script needs, as plain data
+        $products = Product::orderBy('name')->get(['id', 'name', 'sku', 'selling_price', 'current_stock'])
+            ->map(fn ($p) => [
+                'id' => $p->id,
+                'name' => $p->name,
+                'sku' => $p->sku,
+                'price' => (float) ($isSupervisor ? $p->selling_price : ($lockedPrices[$p->id] ?? $p->selling_price)),
+                'list_price' => (float) $p->selling_price,
+                'available' => (float) $p->current_stock + (float) ($originalQty[$p->id] ?? 0),
+            ])->values();
+
+        $original = $sale->items->groupBy('product_id')->map(fn ($rows, $pid) => [
+            'product_id' => (int) $pid,
+            'quantity' => (float) $rows->sum('quantity'),
+            'price' => (float) $rows->first()->price,
+        ])->values();
+
+        // After a failed save, show what the user had entered rather than the stored sale
+        $items = old('items')
+            ? collect(old('items'))->map(fn ($i) => ['product_id' => (int) $i['product_id'], 'quantity' => (float) $i['quantity'], 'price' => (float) ($i['price'] ?? 0)])->values()
+            : $original;
+        $payments = old('payments')
+            ? collect(old('payments'))->map(fn ($p) => ['method' => $p['method'], 'amount' => (float) $p['amount']])->values()
+            : ($sale->payments->isNotEmpty()
+                ? $sale->payments->map(fn ($p) => ['method' => $p->method, 'amount' => (float) $p->amount])->values()
+                : collect([['method' => $sale->payment_method === 'split' ? 'cash' : $sale->payment_method, 'amount' => (float) $sale->total_amount]]));
+
+        $methods = PaymentMethods::getDisplayNames();
+
+        return view('pos.sale-edit', compact('sale', 'products', 'original', 'items', 'payments', 'methods', 'isSupervisor'));
     }
 
-    public function update(Request $request, $id)
+    public function update(Request $request, $id, SaleEditor $editor)
     {
-        try {
-            $sale = Sale::findOrFail($id);
-            
-            $validated = $request->validate([
-                'payments' => 'required|array|min:1',
-                'payments.*.method' => 'required|string',
-                'payments.*.amount' => 'required|numeric|min:0.01',
-                'items' => 'required|array',
-                'items.*.product_id' => 'required|exists:products,id',
-                'items.*.quantity' => 'required|numeric|min:0.01',
-                'items.*.price' => 'required|numeric|min:0'
-            ]);
+        $sale = Sale::findOrFail($id);
 
-            // Calculate original totals for edit log
-            $originalTotal = $sale->total_amount;
-            $originalItems = $sale->items->map(function($item) {
-                return [
-                    'product_id' => $item->product_id,
-                    'product_name' => $item->product->name,
-                    'quantity' => $item->quantity,
-                    'price' => $item->price,
-                    'subtotal' => $item->subtotal
-                ];
-            })->toArray();
+        $validated = $request->validate([
+            'edit_reason' => 'required|string|min:5|max:255',
+            'payments' => 'required|array|min:1',
+            'payments.*.method' => 'required|string',
+            'payments.*.amount' => 'required|numeric|min:0.01',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.quantity' => 'required|numeric|min:0.01',
+            'items.*.price' => 'nullable|numeric|min:0',
+        ], [
+            'edit_reason.required' => 'Give a reason for changing this sale.',
+            'edit_reason.min' => 'The reason must be at least 5 characters.',
+        ]);
 
-            $originalPayments = $sale->payments->map(function($payment) {
-                return [
-                    'method' => $payment->method,
-                    'amount' => $payment->amount
-                ];
-            })->toArray();
+        $editor->update($sale, $validated['items'], $validated['payments'], trim($validated['edit_reason']), 'Sales page');
 
-            // Calculate new totals
-            $newTotal = 0;
-            $newItems = [];
-            foreach ($validated['items'] as $item) {
-                $product = Product::find($item['product_id']);
-                $subtotal = $item['quantity'] * $item['price'];
-                $newTotal += $subtotal;
-                
-                $newItems[] = [
-                    'product_id' => $item['product_id'],
-                    'product_name' => $product->name,
-                    'quantity' => $item['quantity'],
-                    'price' => $item['price'],
-                    'subtotal' => $subtotal
-                ];
-            }
-
-            $totalPaid = collect($validated['payments'])->sum('amount');
-            if (abs($totalPaid - $newTotal) > 0.01) {
-                throw new \Exception('Total paid amount (MWK ' . number_format($totalPaid, 2) . ') must match the new total amount (MWK ' . number_format($newTotal, 2) . ').');
-            }
-            
-            $paymentMethod = count($validated['payments']) > 1 ? 'split' : $validated['payments'][0]['method'];
-
-            // Create edit log
-            $editLog = [
-                'original_total' => $originalTotal,
-                'new_total' => $newTotal,
-                'total_change' => $newTotal - $originalTotal,
-                'original_payment_method' => $sale->payment_method,
-                'original_payments' => $originalPayments,
-                'new_payment_method' => $paymentMethod,
-                'new_payments' => $validated['payments'],
-                'original_items' => $originalItems,
-                'new_items' => $newItems,
-                'edited_by' => auth()->user()->name,
-                'edited_at' => now()->format('Y-m-d H:i:s')
-            ];
-
-            // Restore original stock
-            foreach ($sale->items as $item) {
-                $product = Product::find($item->product_id);
-                if ($product) {
-                    $product->current_stock += $item->quantity;
-                    $product->save();
-                }
-            }
-
-            // Update sale
-            $sale->update([
-                'payment_method' => $paymentMethod,
-                'total_amount' => $newTotal,
-                'total_paid' => $newTotal,
-                'sell_due' => 0,
-                'total_items' => collect($validated['items'])->sum('quantity'),
-                'is_edited' => true,
-                'edit_log' => json_encode($editLog),
-                'edited_at' => now(),
-                'edited_by' => auth()->id()
-            ]);
-
-            // Delete old items
-            $sale->items()->delete();
-            
-            // Delete old payments and create new ones
-            $sale->payments()->delete();
-            foreach ($validated['payments'] as $payment) {
-                Payment::create([
-                    'sale_id' => $sale->id,
-                    'method' => $payment['method'],
-                    'amount' => $payment['amount']
-                ]);
-            }
-
-            // Create new items and update stock
-            foreach ($validated['items'] as $item) {
-                SaleItem::create([
-                    'sale_id' => $sale->id,
-                    'product_id' => $item['product_id'],
-                    'quantity' => $item['quantity'],
-                    'price' => $item['price'],
-                    'subtotal' => $item['quantity'] * $item['price']
-                ]);
-
-                // Update stock
-                $product = Product::find($item['product_id']);
-                if ($product) {
-                    $product->current_stock = max(0, $product->current_stock - $item['quantity']);
-                    $product->save();
-                }
-            }
-
-            return redirect()->route('sales.show', $sale->id)->with('success', 'Sale updated successfully');
-
-        } catch (\Exception $e) {
-            return redirect()->back()->with('error', 'Failed to update sale: ' . $e->getMessage());
-        }
+        return redirect()->route('sales.show', $sale->id)->with('success', 'Sale updated. Stock, payments and reports now reflect the change.');
     }
 
     public function destroy($id)
     {
         $sale = Sale::findOrFail($id);
-        
+
+        if (!auth()->user()->hasPermission('delete_pos_sell')) {
+            IntegrityEvent::record('delete_blocked', 'high',
+                "Tried to delete sale {$sale->invoice_no} (" . formatCurrency($sale->total_amount) . ') without permission',
+                ['sale_id' => $sale->id, 'invoice_no' => $sale->invoice_no, 'amount' => $sale->total_amount, 'details' => IntegrityMonitor::snapshot($sale)]);
+
+            $message = 'You do not have permission to delete sales. Ask a manager.';
+            return request()->expectsJson()
+                ? response()->json(['success' => false, 'message' => $message], 403)
+                : back()->with('error', $message);
+        }
+
+        // Keep a permanent copy before the sale disappears
+        IntegrityEvent::record('sale_deleted', 'critical',
+            "Deleted sale {$sale->invoice_no} of " . formatCurrency($sale->total_amount) . " ({$sale->payment_method}) made "
+                . optional($sale->created_at)->format('d M Y H:i'),
+            [
+                'sale_id' => $sale->id,
+                'invoice_no' => $sale->invoice_no,
+                'register_id' => $sale->register_id,
+                'amount' => $sale->total_amount,
+                'details' => IntegrityMonitor::snapshot($sale) + ['sold_by' => $sale->user?->name ?? $sale->register?->user?->name],
+            ]);
+
         // Restore stock for each item
         foreach ($sale->items as $item) {
             $product = Product::find($item->product_id);

@@ -15,8 +15,7 @@ class RoleSeeder extends Seeder
     public function run(): void
     {
         // Create Super Admin role with all permissions
-        $superAdmin = Role::create([
-            'name' => 'super_admin',
+        $superAdmin = Role::updateOrCreate(['name' => 'super_admin'], [
             'display_name' => 'Super Admin',
             'description' => 'Full system access',
             'is_superadmin' => true
@@ -27,8 +26,7 @@ class RoleSeeder extends Seeder
         $superAdmin->permissions()->sync($allPermissions);
 
         // Create Admin role with most permissions
-        $admin = Role::create([
-            'name' => 'admin',
+        $admin = Role::updateOrCreate(['name' => 'admin'], [
             'display_name' => 'Admin',
             'description' => 'Administrative access'
         ]);
@@ -38,8 +36,7 @@ class RoleSeeder extends Seeder
         $admin->permissions()->sync($adminPermissions);
 
         // Create Cashier role with limited permissions
-        $cashier = Role::create([
-            'name' => 'cashier',
+        $cashier = Role::updateOrCreate(['name' => 'cashier'], [
             'display_name' => 'Cashier',
             'description' => 'POS and basic sales access'
         ]);
@@ -64,8 +61,7 @@ class RoleSeeder extends Seeder
         $cashier->permissions()->sync($cashierPermissionIds);
 
         // Create Manager role
-        $manager = Role::create([
-            'name' => 'manager',
+        $manager = Role::updateOrCreate(['name' => 'manager'], [
             'display_name' => 'Manager',
             'description' => 'Management access with reporting'
         ]);

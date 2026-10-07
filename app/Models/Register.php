@@ -16,6 +16,9 @@ class Register extends Model
         'closed_at',
         'opening_cash',
         'closing_cash',
+        'expected_cash',
+        'counted_cash',
+        'cash_variance',
     ];
 
     protected $casts = [
@@ -25,6 +28,17 @@ class Register extends Model
     'opened_at' => 'datetime',
         'closed_at' => 'datetime',
     ];
+
+    protected static function booted()
+    {
+        // Email the Z report whenever a register goes from open to closed,
+        // whichever controller action closed it.
+        static::updated(function (Register $register) {
+            if ($register->wasChanged('closed_at') && $register->closed_at && !$register->getOriginal('closed_at')) {
+                \App\Jobs\SendZReportEmail::dispatchAfterResponse($register->id, auth()->id());
+            }
+        });
+    }
 
     public function user()
     {

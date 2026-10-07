@@ -12,6 +12,8 @@ use App\Models\User;
 use App\Models\Payment;
 use App\Models\StockHistory;
 use App\Helpers\PaymentMethods;
+use App\Models\IntegrityEvent;
+use App\Services\IntegrityMonitor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -649,9 +651,11 @@ class POSController extends Controller
 
                 // Clear cart after successful multiple payments
                 session()->forget('pos_cart');
-                
+
                 // Commit database transaction
                 DB::commit();
+
+                IntegrityMonitor::checkCompletedSale($sale);
 
                 return response()->json([
                     'success' => true,
@@ -768,9 +772,11 @@ class POSController extends Controller
                 // Clear cart after successful single payment
                 session()->forget('pos_cart');
                 \Log::info('Cart cleared after successful sale', ['invoice_no' => $sale->invoice_no]);
-                
+
                 // Commit database transaction
                 DB::commit();
+
+                IntegrityMonitor::checkCompletedSale($sale);
 
                 return response()->json([
                     'success' => true,
@@ -1045,114 +1051,41 @@ class POSController extends Controller
         }
     }
 
-    public function editSale(Request $request)
+    public function editSale(Request $request, \App\Services\SaleEditor $editor)
     {
+        $validated = $request->validate([
+            'original_sale_id' => 'required|exists:sales,id',
+            'cart' => 'required|array|min:1',
+            'cart.*.id' => 'required|integer',
+            'cart.*.quantity' => 'required|numeric|min:0.01',
+            'cart.*.price' => 'nullable|numeric|min:0',
+            'payment_method' => 'required_without:payments|string',
+            'payments' => 'nullable|array',
+            'payments.*.method' => 'required_with:payments|string',
+            'payments.*.amount' => 'required_with:payments|numeric|min:0.01',
+            'edit_reason' => 'nullable|string|max:255',
+        ]);
+
+        $sale = Sale::findOrFail($validated['original_sale_id']);
+        $items = collect($validated['cart'])->map(fn ($i) => [
+            'product_id' => $i['id'], 'quantity' => $i['quantity'], 'price' => $i['price'] ?? 0,
+        ])->all();
+        // One payment method: it covers whatever the new total is after the editor applies the real prices
+        $payments = $validated['payments'] ?? [['method' => $validated['payment_method'], 'amount' => null]];
+
         try {
-            $validated = $request->validate([
-                'invoice_no' => 'required|string',
-                'customer_name' => 'nullable|string',
-                'contact_number' => 'nullable|string',
-                'payment_method' => 'required|string',
-                'payment_status' => 'required|string',
-                'is_edit' => 'required|boolean',
-                'original_sale_id' => 'required|exists:sales,id',
-                'edit_log' => 'required|array',
-                'cart' => 'required|array'
-            ]);
-
-            $originalSale = Sale::findOrFail($validated['original_sale_id']);
-            
-            // Verify user has access to this sale
-            $openRegister = RegisterController::getOpenRegister();
-            if (!$openRegister || $originalSale->register_id !== $openRegister->id) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'You can only edit sales from your current register session.'
-                ], 403);
-            }
-
-            // Calculate new totals
-            $totalAmount = collect($validated['cart'])->sum('subtotal');
-            $totalItems = collect($validated['cart'])->sum('quantity');
-
-            // Update original sale with edit flag
-            $originalSale->update([
-                'customer_name' => $validated['customer_name'] ?? 'Walk-In Customer',
-                'contact_number' => $validated['contact_number'] ?? null,
-                'payment_method' => $validated['payment_method'],
-                'payment_status' => $validated['payment_status'],
-                'total_amount' => $totalAmount,
-                'total_paid' => $totalAmount,
-                'sell_due' => 0,
-                'total_items' => $totalItems,
-                'is_edited' => true,
-                'edit_log' => json_encode($validated['edit_log']),
-                'edited_at' => now(),
-                'edited_by' => auth()->id()
-            ]);
-
-            // Update or create POS record for edited sale
-            $posRecord = POS::where('invoice_no', $originalSale->invoice_no)->first();
-            if ($posRecord) {
-                $posRecord->update([
-                    'customer_name' => $validated['customer_name'] ?? 'Walk-In Customer',
-                    'payment_status' => $validated['payment_status'],
-                    'payment_method' => $validated['payment_method'],
-                    'total_amount' => $totalAmount,
-                    'total_paid' => $totalAmount,
-                    'total_items' => $totalItems,
-                ]);
-            } else {
-                POS::create([
-                    'date' => $originalSale->created_at,
-                    'invoice_no' => $originalSale->invoice_no,
-                    'customer_name' => $validated['customer_name'] ?? 'Walk-In Customer',
-                    'payment_status' => $validated['payment_status'],
-                    'payment_method' => $validated['payment_method'],
-                    'total_amount' => $totalAmount,
-                    'total_paid' => $totalAmount,
-                    'return_due' => 0,
-                    'shipping_status' => 'Completed',
-                    'total_items' => $totalItems,
-                ]);
-            }
-
-            // Delete old sale items
-            $originalSale->items()->delete();
-
-            // Create new sale items
-            foreach ($validated['cart'] as $item) {
-                SaleItem::create([
-                    'sale_id' => $originalSale->id,
-                    'product_id' => $item['id'],
-                    'quantity' => $item['quantity'],
-                    'price' => $item['price'],
-                    'subtotal' => $item['subtotal']
-                ]);
-
-                // Update stock
-                $product = Product::find($item['id']);
-                if ($product) {
-                    $product->current_stock += $originalSale->items()
-                        ->where('product_id', $item['id'])
-                        ->sum('quantity'); // Return original quantity
-                    $product->current_stock -= $item['quantity']; // Subtract new quantity
-                    $product->save();
-                }
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Sale updated successfully',
-                'sale_id' => $originalSale->id,
-                'invoice_no' => $originalSale->invoice_no
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Failed to update sale: ' . $e->getMessage()
-            ], 500);
+            $sale = $editor->update($sale, $items, $payments, trim($validated['edit_reason'] ?? '') ?: 'Edited from POS screen', 'POS');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['success' => false, 'error' => collect($e->errors())->flatten()->first()], 422);
         }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Sale updated successfully',
+            'sale_id' => $sale->id,
+            'invoice_no' => $sale->invoice_no,
+            'total_amount' => $sale->total_amount,
+        ]);
     }
 
     public function recentSales()

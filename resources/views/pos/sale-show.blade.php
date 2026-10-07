@@ -212,6 +212,24 @@
                             </div>
                         @endif
 
+                        @if(!empty($editLog['history']))
+                            <div class="mt-4">
+                                <h6 class="fw-bold mb-3 text-dark">Edit History</h6>
+                                <div class="bg-white rounded-3 border shadow-sm">
+                                    @foreach(array_reverse($editLog['history']) as $h)
+                                        <div class="px-3 py-2 {{ !$loop->last ? 'border-bottom' : '' }} small">
+                                            <div class="d-flex justify-content-between">
+                                                <strong>{{ $h['by'] ?? 'Unknown' }}</strong>
+                                                <span class="text-muted">{{ \Carbon\Carbon::parse($h['at'])->format('d M Y H:i') }} · {{ $h['via'] ?? '' }}</span>
+                                            </div>
+                                            <div>MWK {{ number_format($h['from_total'], 2) }} → MWK {{ number_format($h['to_total'], 2) }}</div>
+                                            <div class="text-muted"><i class="bi bi-chat-left-text me-1"></i>{{ $h['reason'] }}</div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
+                        @endif
+
                         @if(isset($editLog['original_items']) && isset($editLog['new_items']))
                             <div class="mt-4">
                                 <h6 class="fw-bold mb-3 text-dark">Detailed Item Changes</h6>

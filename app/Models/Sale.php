@@ -12,7 +12,7 @@ class Sale extends Model
     use HasFactory;
 
     protected $fillable = [
-        'register_id', 'invoice_no', 'customer_name', 'contact_number', 'location',
+        'register_id', 'user_id', 'invoice_no', 'customer_name', 'contact_number', 'location',
         'payment_status', 'payment_method', 'total_amount', 'total_paid',
         'sell_due', 'total_items', 'is_edited', 'edit_log', 'edited_at', 'edited_by'
     ];
@@ -25,6 +25,26 @@ class Sale extends Model
         'total_paid' => 'decimal:2',
         'sell_due' => 'decimal:2'
     ];
+
+    protected static function booted()
+    {
+        // Record who made the sale
+        static::creating(function (Sale $sale) {
+            if (empty($sale->user_id) && auth()->check()) {
+                $sale->user_id = auth()->id();
+            }
+        });
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function editor()
+    {
+        return $this->belongsTo(User::class, 'edited_by');
+    }
 
     public function items()
     {
