@@ -126,7 +126,13 @@ POSApp.modal = {
         const modal = document.getElementById(modalId);
         if (!modal) {
             console.error('Modal element not found:', modalId);
-            alert('Error: Modal not found');
+            return;
+        }
+
+        // Use custom overlay logic for the loading modal
+        if (modalId === 'productLoadingModal') {
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
             return;
         }
 
@@ -137,18 +143,18 @@ POSApp.modal = {
             } else {
                 this.showStandardModal(modal);
             }
-            
-            console.log('Modal should be visible now');
         } catch (error) {
             console.error('Error showing modal:', error);
-            alert('Error showing modal: ' + error.message);
         }
     },
 
     showStandardModal: function(modal) {
         if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-            console.log('Using Bootstrap 5 modal');
-            const bsModal = new bootstrap.Modal(modal);
+            console.log('Using Bootstrap 5 modal management');
+            let bsModal = bootstrap.Modal.getInstance(modal);
+            if (!bsModal) {
+                bsModal = new bootstrap.Modal(modal);
+            }
             bsModal.show();
         } else {
             console.log('Bootstrap not available, using fallback');
@@ -156,11 +162,13 @@ POSApp.modal = {
             modal.classList.add('show');
             document.body.classList.add('modal-open');
             
-            // Add backdrop
-            const backdrop = document.createElement('div');
-            backdrop.className = 'modal-backdrop fade show';
-            backdrop.id = 'modal-backdrop';
-            document.body.appendChild(backdrop);
+            // Add backdrop if it doesn't exist
+            if (!document.getElementById('modal-backdrop')) {
+                const backdrop = document.createElement('div');
+                backdrop.className = 'modal-backdrop fade show';
+                backdrop.id = 'modal-backdrop';
+                document.body.appendChild(backdrop);
+            }
         }
     },
 
@@ -219,13 +227,19 @@ POSApp.modal = {
         
         const modal = document.getElementById(modalId);
         if (!modal) {
-            console.error('Modal element not found for hiding:', modalId);
+            this.forceCleanup();
+            return;
+        }
+
+        // Use custom overlay logic for the loading modal
+        if (modalId === 'productLoadingModal') {
+            modal.style.display = 'none';
+            document.body.style.overflow = '';
             return;
         }
 
         try {
             if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-                console.log('Using Bootstrap 5 modal to hide');
                 const bsModal = bootstrap.Modal.getInstance(modal);
                 if (bsModal) {
                     bsModal.hide();
@@ -236,9 +250,11 @@ POSApp.modal = {
                 this.fallbackHide(modal);
             }
             
-            console.log('Modal should be hidden now');
+            setTimeout(() => this.forceCleanup(), 500);
+            
         } catch (error) {
             console.error('Error hiding modal:', error);
+            this.forceCleanup();
         }
     },
 
@@ -246,13 +262,17 @@ POSApp.modal = {
         console.log('Using fallback hide method');
         modal.style.display = 'none';
         modal.classList.remove('show');
+        this.forceCleanup();
+    },
+
+    forceCleanup: function() {
         document.body.classList.remove('modal-open');
+        document.body.style.overflow = '';
+        document.body.style.paddingRight = '';
         
-        // Remove backdrop
-        const backdrop = document.getElementById('modal-backdrop');
-        if (backdrop) {
-            backdrop.remove();
-        }
+        // Remove ALL backdrops
+        const backdrops = document.querySelectorAll('.modal-backdrop');
+        backdrops.forEach(b => b.remove());
     }
 };
 

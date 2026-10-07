@@ -37,6 +37,7 @@ class UserManagementController extends Controller
 
         if (!empty($validated['roles'])) {
             $user->roles()->sync($validated['roles']);
+            $user->load('roles'); // Refresh roles
         }
 
         return redirect()->route('admin.users.index')
@@ -70,9 +71,9 @@ class UserManagementController extends Controller
             $user->update(['password' => Hash::make($validated['password'])]);
         }
 
-        if (isset($validated['roles'])) {
-            $user->roles()->sync($validated['roles']);
-        }
+        // Sync roles (use empty array if none selected)
+        $user->roles()->sync($request->roles ?? []);
+        $user->load('roles'); // Refresh roles relationship
 
         return redirect()->route('admin.users.index')
             ->with('success', 'User updated successfully');
@@ -81,14 +82,18 @@ class UserManagementController extends Controller
     public function deleteUser(User $user)
     {
         if ($user->id === auth()->id()) {
-            return redirect()->route('admin.users.index')
-                ->with('error', 'You cannot delete your own account');
+            return response()->json([
+                'success' => false,
+                'error' => 'You cannot delete your own account'
+            ], 403);
         }
 
         $user->delete();
 
-        return redirect()->route('admin.users.index')
-            ->with('success', 'User deleted successfully');
+        return response()->json([
+            'success' => true,
+            'message' => 'User deleted successfully'
+        ]);
     }
 
     public function roles()
@@ -157,13 +162,17 @@ class UserManagementController extends Controller
     public function deleteRole(Role $role)
     {
         if ($role->users()->count() > 0) {
-            return redirect()->route('admin.roles.index')
-                ->with('error', 'Cannot delete role that is assigned to users');
+            return response()->json([
+                'success' => false,
+                'error' => 'Cannot delete role that is assigned to users'
+            ], 422);
         }
 
         $role->delete();
 
-        return redirect()->route('admin.roles.index')
-            ->with('success', 'Role deleted successfully');
+        return response()->json([
+            'success' => true,
+            'message' => 'Role deleted successfully'
+        ]);
     }
 }

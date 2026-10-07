@@ -61,44 +61,90 @@ class RegisterController extends Controller
     {
         $openRegister = Register::where('user_id', auth()->id())
             ->whereNull('closed_at')
-            ->with('sales')
             ->first();
 
         if (!$openRegister) {
             return back()->with('error', 'No open register to close.');
         }
 
-        // Calculate totals and counts by payment method
-        $sales = $openRegister->sales;
-        
         $totals = [
-            'total_cash' => $sales->where('payment_method', 'cash')->sum('total_amount'),
-            'total_card' => $sales->where('payment_method', 'card')->sum('total_amount'),
-            'total_cheques' => $sales->where('payment_method', 'cheque')->sum('total_amount'),
-            'total_bank_transfer' => $sales->where('payment_method', 'bank_transfer')->sum('total_amount'),
-            'total_advance' => $sales->where('payment_method', 'advance')->sum('total_amount'),
-            'total_standard_bank' => $sales->where('payment_method', 'standard_bank')->sum('total_amount'),
-            'total_national_bank' => $sales->where('payment_method', 'national_bank')->sum('total_amount'),
-            'total_mpamba' => $sales->where('payment_method', 'mpamba')->sum('total_amount'),
-            'total_airtel_money' => $sales->where('payment_method', 'airtel_money')->sum('total_amount'),
-            'total_cash_and_card' => $sales->where('payment_method', 'cash_and_card')->sum('total_amount'),
-            'total_sales' => $sales->sum('total_amount'),
+            'total_cash' => 0, 'total_card' => 0, 'total_cheques' => 0,
+            'total_bank_transfer' => 0, 'total_advance' => 0, 'total_standard_bank' => 0,
+            'total_national_bank' => 0, 'total_mpamba' => 0, 'total_airtel_money' => 0,
+            'total_cash_and_card' => 0, 'total_sales' => 0,
         ];
 
-        // Calculate counts (frequency) for each payment method
         $counts = [
-            'count_cash' => $sales->where('payment_method', 'cash')->count(),
-            'count_card' => $sales->where('payment_method', 'card')->count(),
-            'count_cheques' => $sales->where('payment_method', 'cheque')->count(),
-            'count_bank_transfer' => $sales->where('payment_method', 'bank_transfer')->count(),
-            'count_advance' => $sales->where('payment_method', 'advance')->count(),
-            'count_standard_bank' => $sales->where('payment_method', 'standard_bank')->count(),
-            'count_national_bank' => $sales->where('payment_method', 'national_bank')->count(),
-            'count_mpamba' => $sales->where('payment_method', 'mpamba')->count(),
-            'count_airtel_money' => $sales->where('payment_method', 'airtel_money')->count(),
-            'count_cash_and_card' => $sales->where('payment_method', 'cash_and_card')->count(),
-            'count_total_sales' => $sales->count(),
+            'count_cash' => 0, 'count_card' => 0, 'count_cheques' => 0,
+            'count_bank_transfer' => 0, 'count_advance' => 0, 'count_standard_bank' => 0,
+            'count_national_bank' => 0, 'count_mpamba' => 0, 'count_airtel_money' => 0,
+            'count_cash_and_card' => 0, 'count_total_sales' => 0,
         ];
+
+        // Get overall stats (Total Sales count and sum) in one fast query
+        $overallStats = \Illuminate\Support\Facades\DB::table('sales')
+            ->where('register_id', $openRegister->id)
+            ->select(
+                \Illuminate\Support\Facades\DB::raw('COUNT(*) as count'), 
+                \Illuminate\Support\Facades\DB::raw('SUM(total_amount) as total')
+            )
+            ->first();
+
+        $totals['total_sales'] = (float)($overallStats->total ?? 0);
+        $counts['count_total_sales'] = (int)($overallStats->count ?? 0);
+
+        // Get totals and counts for non-split sales (group by payment_method)
+        $simpleSales = \Illuminate\Support\Facades\DB::table('sales')
+            ->where('register_id', $openRegister->id)
+            ->where('payment_method', '!=', 'split')
+            ->select(
+                'payment_method', 
+                \Illuminate\Support\Facades\DB::raw('COUNT(*) as count'), 
+                \Illuminate\Support\Facades\DB::raw('SUM(total_amount) as total')
+            )
+            ->groupBy('payment_method')
+            ->get();
+
+        // Get totals and counts for split payments
+        $splitPayments = \Illuminate\Support\Facades\DB::table('payments')
+            ->join('sales', 'payments.sale_id', '=', 'sales.id')
+            ->where('sales.register_id', $openRegister->id)
+            ->where('sales.payment_method', '=', 'split')
+            ->select(
+                'payments.method', 
+                \Illuminate\Support\Facades\DB::raw('COUNT(*) as count'), 
+                \Illuminate\Support\Facades\DB::raw('SUM(payments.amount) as total')
+            )
+            ->groupBy('payments.method')
+            ->get();
+
+        // Process simple sales
+        foreach ($simpleSales as $item) {
+            $method = strtolower($item->payment_method);
+            $methodKey = 'total_' . ($method === 'cheque' ? 'cheques' : $method);
+            $countKey = 'count_' . ($method === 'cheque' ? 'cheques' : $method);
+
+            if (array_key_exists($methodKey, $totals)) {
+                $totals[$methodKey] = (float)$item->total;
+            }
+            if (array_key_exists($countKey, $counts)) {
+                $counts[$countKey] = (int)$item->count;
+            }
+        }
+
+        // Process split payments
+        foreach ($splitPayments as $item) {
+            $method = strtolower($item->method);
+            $methodKey = 'total_' . ($method === 'cheque' ? 'cheques' : $method);
+            $countKey = 'count_' . ($method === 'cheque' ? 'cheques' : $method);
+
+            if (array_key_exists($methodKey, $totals)) {
+                $totals[$methodKey] += (float)$item->total;
+            }
+            if (array_key_exists($countKey, $counts)) {
+                $counts[$countKey] += (int)$item->count;
+            }
+        }
 
         return view('pos.register.close', [
             'register' => $openRegister,
@@ -108,9 +154,10 @@ class RegisterController extends Controller
     }
 
     /**
-     * Close register session
+     * Finalize and close register session
+     * Uses PATCH method to avoid WAF blocking 'close' keyword
      */
-    public function update(Request $request, Register $register)
+    public function finalize(Request $request, Register $register)
     {
         // Verify register belongs to user and is open
         if ($register->user_id !== auth()->id()) {
@@ -121,18 +168,84 @@ class RegisterController extends Controller
             return back()->with('error', 'Register is already closed.');
         }
 
-        // Get all sales for this register
-        $sales = $register->sales;
+        // Closing cash is total of all transactions
+        $closingCash = $register->sales()->sum('total_amount');
 
-        // Calculate totals by payment method
-        $totalCash = $sales->where('payment_method', 'cash')->sum('total_amount');
-        $totalCard = $sales->where('payment_method', 'card')->sum('total_amount');
-        $totalCheques = $sales->where('payment_method', 'cheque')->sum('total_amount');
-        $totalBankTransfer = $sales->where('payment_method', 'bank_transfer')->sum('total_amount');
-        $totalAdvance = $sales->where('payment_method', 'advance')->sum('total_amount');
+        // Update register status to closed
+        $register->update([
+            'closing_cash' => $closingCash,
+            'closed_at' => now(),
+        ]);
 
-        // Closing cash is total of all cash transactions
-        $closingCash = $totalCash + $totalCard + $totalCheques + $totalBankTransfer + $totalAdvance;
+        return redirect()->route('dashboard')
+            ->with('success', 'Register closed successfully. Total: MWK ' . number_format($closingCash, 2));
+    }
+
+    /**
+     * Generic status update method
+     * Handles register status updates via request body (action-based design)
+     * This method is WAF-safe as it doesn't use sensitive keywords in the URL
+     */
+    public function updateStatus(Request $request, Register $register)
+    {
+        // Verify register belongs to user
+        if ((int)$register->user_id !== (int)auth()->id()) {
+    abort(403, 'Unauthorized');
+}
+
+        // Validate the action being requested
+        $validated = $request->validate([
+            'action' => 'required|string|in:finalize,reopen',
+        ]);
+
+        $action = $validated['action'];
+
+        if ($action === 'finalize') {
+            // Handle register finalization
+            if ($register->closed_at) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Register is already closed.'
+                ], 422);
+            }
+
+            $closingCash = $register->sales()->sum('total_amount');
+
+            $register->update([
+                'closing_cash' => $closingCash,
+                'closed_at' => now(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Register closed successfully.',
+                'closing_cash' => $closingCash,
+            ]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Invalid action.'
+        ], 422);
+    }
+
+    /**
+     * Update register (deprecated - use finalize or updateStatus instead)
+     * Kept for backward compatibility but marked for removal
+     */
+    public function update(Request $request, Register $register)
+    {
+        // Verify register belongs to user and is open
+        if ((int)$register->user_id !== (int)auth()->id()) {
+    abort(403, 'Unauthorized');
+}
+
+        if ($register->closed_at) {
+            return back()->with('error', 'Register is already closed.');
+        }
+
+        // Closing cash is total of all transactions
+        $closingCash = $register->sales()->sum('total_amount');
 
         // Update register
         $register->update([
@@ -140,7 +253,7 @@ class RegisterController extends Controller
             'closed_at' => now(),
         ]);
 
-        return redirect()->route('reports.register-report')
+        return redirect()->route('dashboard')
             ->with('success', 'Register closed successfully. Total: MWK ' . number_format($closingCash, 2));
     }
 

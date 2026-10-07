@@ -1,174 +1,296 @@
 @extends('layouts.app')
 
-@section('title', 'Products - EDUC Pharmacy')
+@section('title', 'Product Management - EDUC Pharmacy')
 
 @section('content')
-<div class="container-fluid">
-    <div class="row mb-4">
-        <div class="col-md-8">
-            <h1 class="h4 fw-bold">Products</h1>
+<div class="container-fluid py-4 products-page">
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+        <div>
+            <h4 class="fw-bold mb-1">Product Management</h4>
+            <p class="text-muted small mb-0">Manage your inventory, pricing, and stock levels.</p>
         </div>
-        <div class="col-md-4 text-end">
-            <a href="{{ route('products.create') }}" class="btn btn-primary">
-                <i class="bi bi-plus-circle"></i> Add New Product
+        <div class="d-flex gap-2">
+            <a href="{{ route('products.create') }}" class="btn btn-primary rounded-pill px-4 shadow-sm">
+                <i class="bi bi-plus-lg me-1"></i> Add New Product
             </a>
         </div>
     </div>
 
-    @if (session('success'))
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            {{ session('success') }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    @endif
-
-    <div class="card border">
-        <div class="card-body">
-            <!-- Search and Display Options -->
-            <div class="row mb-3">
-                <div class="col-md-6">
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="bi bi-search"></i></span>
-                        <input type="text" class="form-control" id="productSearch" placeholder="Search products by name, SKU, category, brand..." value="{{ request('search') }}">
+    <!-- Quick Stats -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm rounded-4 h-100 p-3 bg-white border-start border-4 border-primary">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="stats-icon bg-primary-soft text-primary rounded-3 p-2">
+                        <i class="bi bi-box-seam fs-4"></i>
                     </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="d-flex align-items-center gap-2">
-                        <label class="form-label mb-0 me-2">Show:</label>
-                        <select class="form-select form-select-sm" id="productDisplayLimit" style="width: auto;" onchange="changeDisplayLimit(this.value)">
-                            <option value="25" {{ request('limit', 25) == 25 ? 'selected' : '' }}>25</option>
-                            <option value="50" {{ request('limit', 25) == 50 ? 'selected' : '' }}>50</option>
-                            <option value="100" {{ request('limit', 25) == 100 ? 'selected' : '' }}>100</option>
-                            <option value="200" {{ request('limit', 25) == 200 ? 'selected' : '' }}>200</option>
-                            <option value="all" {{ request('limit', 25) == 'all' ? 'selected' : '' }}>All</option>
-                        </select>
-                        <button class="btn btn-outline-secondary btn-sm" onclick="clearFilters()">Clear</button>
+                    <div>
+                        <p class="text-muted small mb-0 fw-medium">Total Products</p>
+                        <h4 class="fw-bold mb-0">{{ number_format($stats['total']) }}</h4>
                     </div>
                 </div>
             </div>
-            
-            @if ($products->count() > 0)
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead class="table-light">
-                            <tr>
-                                <th>ID</th>
-                                <th>Product Name</th>
-                                <th>SKU</th>
-                                <th>Unit</th>
-                                <th>Category</th>
-                                <th>Brand</th>
-                                <th>Purchase Price</th>
-                                <th>Selling Price</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach ($products as $product)
-                                <tr>
-                                    <td>{{ $product->id }}</td>
-                                    <td>{{ $product->name }}</td>
-                                    <td><span class="badge bg-secondary">{{ $product->sku }}</span></td>
-                                    <td>{{ $product->unit?->short_name ?? '-' }}</td>
-                                    <td>{{ $product->category?->name ?? '-' }}</td>
-                                    <td>{{ $product->brand?->name ?? '-' }}</td>
-                                    <td>MWK {{ number_format($product->purchase_price, 2) }}</td>
-                                    <td>MWK {{ number_format($product->selling_price, 2) }}</td>
-                                    <td>
-                                        <a href="{{ route('products.edit', $product) }}" class="btn btn-sm btn-warning">
-                                            <i class="bi bi-pencil"></i> Edit
-                                        </a>
-                                        <form action="{{ route('products.destroy', $product) }}" method="POST" style="display:inline;">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button type="submit" class="btn btn-sm btn-danger" 
-                                                    onclick="return confirm('Are you sure you want to delete this product?')">
-                                                <i class="bi bi-trash"></i> Delete
-                                            </button>
-                                        </form>
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm rounded-4 h-100 p-3 bg-white border-start border-4 border-danger">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="stats-icon bg-danger-soft text-danger rounded-3 p-2">
+                        <i class="bi bi-exclamation-triangle fs-4"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted small mb-0 fw-medium">Low Stock</p>
+                        <h4 class="fw-bold mb-0 text-danger">{{ number_format($stats['low_stock']) }}</h4>
+                    </div>
                 </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm rounded-4 h-100 p-3 bg-white border-start border-4 border-success">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="stats-icon bg-success-soft text-success rounded-3 p-2">
+                        <i class="bi bi-tags fs-4"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted small mb-0 fw-medium">Categories</p>
+                        <h4 class="fw-bold mb-0">{{ number_format($stats['categories']) }}</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm rounded-4 h-100 p-3 bg-white border-start border-4 border-info">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="stats-icon bg-info-soft text-info rounded-3 p-2">
+                        <i class="bi bi-currency-dollar fs-4"></i>
+                    </div>
+                    <div>
+                        <p class="text-muted small mb-0 fw-medium">Inventory Value</p>
+                        <h5 class="fw-bold mb-0">MWK {{ number_format($stats['total_value'] / 1000000, 1) }}M</h5>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-                <!-- Pagination -->
-                <div class="d-flex justify-content-center mt-4">
-                    {{ $products->links() }}
+    <!-- Filters and Table Container -->
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div class="card-header bg-white border-0 py-3 px-4">
+            <div class="row g-3 align-items-center">
+                <div class="col-12 col-md-6 col-lg-5">
+                    <div class="input-group search-group">
+                        <span class="input-group-text bg-light border-0"><i class="bi bi-search text-muted"></i></span>
+                        <input type="text" class="form-control bg-light border-0" id="productSearch" placeholder="Search by name, SKU, category..." value="{{ request('search') }}" autocomplete="off">
+                        <button class="btn btn-light border-0 text-muted" type="button" id="clearSearch" title="Clear Search">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
                 </div>
-            @else
-                <div class="text-center py-5">
-                    <i class="bi bi-inbox" style="font-size: 3rem; color: #ccc;"></i>
-                    <p class="text-muted mt-3">No products found. <a href="{{ route('products.create') }}">Create one now!</a></p>
+                <div class="col-12 col-md-6 col-lg-7 d-flex justify-content-md-end align-items-center gap-3 flex-wrap">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="text-muted small fw-medium">Show</span>
+                        <select class="form-select form-select-sm border-0 bg-light rounded-pill px-3" id="productDisplayLimit" style="width: auto;">
+                            <option value="25" {{ request('limit', 25) == 25 ? 'selected' : '' }}>25</option>
+                            <option value="50" {{ request('limit', 25) == 50 ? 'selected' : '' }}>50</option>
+                            <option value="100" {{ request('limit', 25) == 100 ? 'selected' : '' }}>100</option>
+                            <option value="all" {{ request('limit', 25) == 'all' ? 'selected' : '' }}>All</option>
+                        </select>
+                    </div>
+                    <div class="vr mx-2 d-none d-md-block" style="height: 20px;"></div>
+                    <button class="btn btn-sm btn-outline-secondary rounded-pill px-3 border-0 bg-light" onclick="exportData()">
+                        <i class="bi bi-download me-1"></i> Export
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary rounded-pill px-3 border-0 bg-light" onclick="printTable()">
+                        <i class="bi bi-printer me-1"></i> Print
+                    </button>
                 </div>
-            @endif
+            </div>
+        </div>
+
+        <div id="tableContainer" class="position-relative min-vh-50">
+            <div id="dynamicContent">
+                <!-- Table will be loaded here via AJAX -->
+                @include('pos.products.table')
+            </div>
+            
+            <!-- Loading Spinner -->
+            <div id="tableLoader" class="position-absolute top-0 start-0 w-100 h-100 d-none justify-content-center align-items-center bg-white bg-opacity-75" style="z-index: 10;">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
         </div>
     </div>
 </div>
 
+<style>
+.products-page {
+    background-color: #f8f9fa;
+}
+
+.stats-icon {
+    width: 45px;
+    height: 45px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.bg-primary-soft { background-color: rgba(0, 77, 61, 0.1); }
+.bg-danger-soft { background-color: rgba(220, 53, 69, 0.1); }
+.bg-success-soft { background-color: rgba(40, 167, 69, 0.1); }
+.bg-info-soft { background-color: rgba(13, 202, 240, 0.1); }
+.bg-light-warning { background-color: #fff9e6; }
+.bg-light-danger { background-color: #fff5f5; }
+
+.search-group {
+    border-radius: 50px;
+    overflow: hidden;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.btn-icon {
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.btn-icon:hover {
+    transform: scale(1.1);
+}
+
+.table thead th {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    background-color: var(--theme-primary) !important;
+    color: white !important;
+}
+
+.table tbody td {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+    font-size: 0.9rem;
+}
+
+.badge-soft {
+    padding: 0.4em 0.8em;
+    font-weight: 500;
+}
+
+/* Pagination Overrides */
+.pagination { margin-bottom: 0; }
+.page-link {
+    border: none;
+    padding: 0.4rem 0.75rem;
+    margin: 0 2px;
+    border-radius: 8px !important;
+    color: #6c757d;
+    font-size: 0.85rem;
+}
+.page-item.active .page-link {
+    background-color: var(--theme-primary);
+    color: #fff;
+}
+</style>
+
+@endsection
+
+@section('scripts')
 <script>
-// Search functionality
-document.getElementById('productSearch').addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') {
-        e.preventDefault();
-        performSearch();
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('productSearch');
+    const limitSelect = document.getElementById('productDisplayLimit');
+    const clearBtn = document.getElementById('clearSearch');
+    const tableContainer = document.getElementById('tableContainer');
+    const tableLoader = document.getElementById('tableLoader');
+
+    let searchTimeout;
+
+    // Search Input Event
+    searchInput.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(fetchProducts, 400);
+    });
+
+    // Limit Select Event
+    limitSelect.addEventListener('change', fetchProducts);
+
+    // Clear Search Event
+    clearBtn.addEventListener('click', function() {
+        if (searchInput.value) {
+            searchInput.value = '';
+            fetchProducts();
+        }
+    });
+
+    // Handle Pagination Clicks (Delegated)
+    tableContainer.addEventListener('click', function(e) {
+        const link = e.target.closest('.pagination a');
+        if (link) {
+            e.preventDefault();
+            const url = new URL(link.href);
+            fetchProducts(url);
+        }
+    });
+
+    function fetchProducts(url = null) {
+        if (!url) {
+            url = new URL(window.location.href);
+            const search = searchInput.value.trim();
+            const limit = limitSelect.value;
+            
+            if (search) url.searchParams.set('search', search);
+            else url.searchParams.delete('search');
+            
+            if (limit !== '25') url.searchParams.set('limit', limit);
+            else url.searchParams.delete('limit');
+            
+            // Reset to page 1 on new search
+            url.searchParams.delete('page');
+        }
+
+        // Show loader
+        tableLoader.classList.remove('d-none');
+        tableLoader.classList.add('d-flex');
+
+        // Update URL in browser without refresh
+        window.history.pushState({}, '', url);
+
+        // AJAX Fetch
+        fetch(url, {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.text())
+        .then(html => {
+            // Update only the dynamic content part
+            document.getElementById('dynamicContent').innerHTML = html;
+            
+            tableLoader.classList.add('d-none');
+            tableLoader.classList.remove('d-flex');
+        })
+        .catch(error => {
+            console.error('Error fetching products:', error);
+            tableLoader.classList.add('d-none');
+            tableLoader.classList.remove('d-flex');
+        });
     }
 });
 
-// Auto-search on input with debounce - fixed cursor issue
-let searchTimeout;
-document.getElementById('productSearch').addEventListener('input', function(e) {
-    // Store cursor position
-    const cursorPosition = e.target.selectionStart;
-    const searchValue = e.target.value;
-    
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(function() {
-        // Restore cursor position after potential DOM updates
-        setTimeout(function() {
-            e.target.setSelectionRange(cursorPosition, cursorPosition);
-        }, 0);
-        performSearch();
-    }, 500);
-});
-
-function performSearch() {
-    const searchValue = document.getElementById('productSearch').value;
-    const currentUrl = new URL(window.location);
-    
-    if (searchValue.trim()) {
-        currentUrl.searchParams.set('search', searchValue);
-    } else {
-        currentUrl.searchParams.delete('search');
-    }
-    
-    window.location.href = currentUrl.toString();
+function exportData() {
+    alert('Exporting data as CSV...');
+    // Logic for export
 }
 
-function changeDisplayLimit(limit) {
-    const currentUrl = new URL(window.location);
-    
-    if (limit === 'all') {
-        currentUrl.searchParams.delete('limit');
-    } else {
-        currentUrl.searchParams.set('limit', limit);
-    }
-    
-    window.location.href = currentUrl.toString();
+function printTable() {
+    window.print();
 }
-
-function clearFilters() {
-    const currentUrl = new URL(window.location);
-    currentUrl.searchParams.delete('search');
-    currentUrl.searchParams.delete('limit');
-    window.location.href = currentUrl.toString();
-}
-
-// Remove auto-focus to prevent cursor issues
-// document.addEventListener('DOMContentLoaded', function() {
-//     document.getElementById('productSearch').focus();
-// });
 </script>
-
 @endsection

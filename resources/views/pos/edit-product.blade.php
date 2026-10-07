@@ -1,306 +1,425 @@
 @extends('layouts.app')
-
 @section('title', 'Edit Product - EDUC Pharmacy')
 
 @section('content')
-<div class="container-fluid">
-    <div class="row mb-4">
-        <div class="col-md-8">
-            <h1 class="h4 fw-bold">Edit Product</h1>
-        </div>
-        <div class="col-md-4 text-end">
-            <a href="{{ route('products.index') }}" class="btn btn-secondary">
-                <i class="bi bi-arrow-left"></i> Back to Products
-            </a>
-        </div>
-    </div>
+<div class="app-wrapper">
+    <div class="app-main">
+        <main class="app-content p-4">
+            
+            <!-- Header Section -->
+            <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-3">
+                <div>
+                    <h1 class="h4 fw-bold mb-1">Edit Product: {{ $product->name }}</h1>
+                    <p class="text-muted small mb-0 text-uppercase tracking-wider fw-semibold">
+                        Modify product details and inventory settings
+                    </p>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="{{ route('products.index') }}" class="btn btn-outline-secondary btn-sm shadow-sm px-3">
+                        <i class="bi bi-arrow-left me-1"></i> Back to List
+                    </a>
+                </div>
+            </div>
 
-    @if ($errors->any())
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <strong>Please fix the following errors:</strong>
-            <ul class="mb-0 mt-2">
-                @foreach ($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    @endif
+            @if ($errors->any())
+                <div class="alert alert-danger border-0 shadow-sm mb-4">
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        <strong class="small">Please fix the following errors:</strong>
+                    </div>
+                    <ul class="mb-0 x-small fw-semibold ps-3">
+                        @foreach ($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
 
-    <div class="card border">
-        <div class="card-body">
-            <form action="{{ route('products.update', $product) }}" method="POST" enctype="multipart/form-data" novalidate>
+            <form action="{{ route('products.update', $product) }}" method="POST" enctype="multipart/form-data" id="productForm">
                 @csrf
                 @method('PUT')
 
-                <!-- Row 1: Product Name, SKU, Barcode Type -->
-                <div class="row g-3 mb-3">
-                    <div class="col-md-4">
-                        <label class="form-label fw-semibold small">Product Name: <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control form-control-sm @error('name') is-invalid @enderror" 
-                               name="name" placeholder="Product Name" value="{{ old('name', $product->name) }}" required>
-                        @error('name')
-                            <div class="invalid-feedback d-block">{{ $message }}</div>
-                        @enderror
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-semibold small">SKU: <i class="bi bi-info-circle"></i></label>
-                        <input type="text" class="form-control form-control-sm @error('sku') is-invalid @enderror" 
-                               name="sku" placeholder="SKU" value="{{ old('sku', $product->sku) }}">
-                        @error('sku')
-                            <div class="invalid-feedback d-block">{{ $message }}</div>
-                        @enderror
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-semibold small">Purchase Price: <span class="text-danger">*</span></label>
-                        <input type="number" class="form-control form-control-sm @error('purchase_price') is-invalid @enderror" 
-                               name="purchase_price" placeholder="0.00" step="0.01" min="0" value="{{ old('purchase_price', $product->purchase_price) }}" required>
-                        @error('purchase_price')
-                            <div class="invalid-feedback d-block">{{ $message }}</div>
-                        @enderror
-                    </div>
-                </div>
-
-                <!-- Row 2: Unit, Brand, Category, Supplier -->
-                <div class="row g-3 mb-3">
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold small">Unit:</label>
-                        <div class="d-flex gap-2">
-                            <select class="form-select form-select-sm @error('unit_id') is-invalid @enderror" 
-                                    name="unit_id">
-                                <option value="">Please Select</option>
-                                @foreach ($units as $unit)
-                                    <option value="{{ $unit->id }}" @selected(old('unit_id', $product->unit_id) == $unit->id)>
-                                        {{ $unit->name }} ({{ $unit->short_name }})
-                                    </option>
-                                @endforeach
-                            </select>
-                            <a href="{{ route('units.create') }}" class="btn btn-primary btn-sm rounded-circle" 
-                               style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;text-decoration:none;">
-                                +
-                            </a>
-                        </div>
-                        @error('unit_id')
-                            <div class="invalid-feedback d-block">{{ $message }}</div>
-                        @enderror
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold small">Brand:</label>
-                        <div class="d-flex gap-2">
-                            <select class="form-select form-select-sm @error('brand_id') is-invalid @enderror" name="brand_id">
-                                <option value="">Please Select</option>
-                                @foreach ($brands as $brand)
-                                    <option value="{{ $brand->id }}" @selected(old('brand_id', $product->brand_id) == $brand->id)>
-                                        {{ $brand->name }}
-                                    </option>
-                                @endforeach
-                            </select>
-                            <a href="{{ route('brands.create') }}" class="btn btn-primary btn-sm rounded-circle" 
-                               style="width:32px;height:32px;display:flex;align-items:center;justify-content:center;text-decoration:none;">
-                                +
-                            </a>
-                        </div>
-                        @error('brand_id')
-                            <div class="invalid-feedback d-block">{{ $message }}</div>
-                        @enderror
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold small">Category:</label>
-                        <select class="form-select form-select-sm @error('category_id') is-invalid @enderror" name="category_id">
-                            <option value="">Please Select</option>
-                            @foreach ($categories as $category)
-                                <option value="{{ $category->id }}" @selected(old('category_id', $product->category_id) == $category->id)>
-                                    {{ $category->name }}
-                                </option>
-                            @endforeach
-                        </select>
-                        @error('category_id')
-                            <div class="invalid-feedback d-block">{{ $message }}</div>
-                        @enderror
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold small">Supplier:</label>
-                        <select class="form-select form-select-sm @error('supplier_id') is-invalid @enderror" name="supplier_id" id="supplierSelect">
-                            <option value="">Please Select</option>
-                            @foreach ($suppliers as $supplier)
-                                <option value="{{ $supplier->id }}" 
-                                        @selected(old('supplier_id', $product->supplier_id) == $supplier->id)
-                                        data-contact="{{ $supplier->contact_person ?? 'N/A' }}"
-                                        data-phone="{{ $supplier->phone ?? 'N/A' }}"
-                                        data-email="{{ $supplier->email ?? 'N/A' }}">
-                                    {{ $supplier->name }}
-                                </option>
-                            @endforeach
-                        </select>
-                        @error('supplier_id')
-                            <div class="invalid-feedback d-block">{{ $message }}</div>
-                        @enderror
-                    </div>
-                    <div class="col-md-1">
-                        <label class="form-label fw-semibold small">Info:</label>
-                        <div class="form-control form-control-sm bg-light" style="height: auto; padding: 0.375rem 0.75rem;">
-                            <small id="supplierInfo" class="text-muted">No supplier selected</small>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Row 3: Selling Price, Alert Quantity, Expiry Date -->
-                <div class="row g-3 mb-3">
-                    <div class="col-md-4">
-                        <label class="form-label fw-semibold small">Selling Price: <span class="text-danger">*</span></label>
-                        <input type="number" class="form-control form-control-sm @error('selling_price') is-invalid @enderror" 
-                               name="selling_price" id="selling_price" placeholder="0.00" step="0.01" min="0" value="{{ old('selling_price', $product->selling_price) }}" required>
-                        @error('selling_price')
-                            <div class="invalid-feedback d-block">{{ $message }}</div>
-                        @enderror
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-semibold small">Alert Quantity: <i class="bi bi-info-circle"></i></label>
-                        <input type="number" class="form-control form-control-sm @error('alert_quantity') is-invalid @enderror" 
-                               name="alert_quantity" placeholder="Alert quantity" step="0.01" min="0" value="{{ old('alert_quantity', $product->alert_quantity) }}">
-                        @error('alert_quantity')
-                            <div class="invalid-feedback d-block">{{ $message }}</div>
-                        @enderror
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-semibold small">Expiry Date: <i class="bi bi-info-circle"></i></label>
-                        <input type="date" class="form-control form-control-sm @error('expiry_date') is-invalid @enderror" 
-                               name="expiry_date" value="{{ old('expiry_date', $product->expiry_date) }}">
-                        <small class="text-muted">Product expiry date for tracking</small>
-                        @error('expiry_date')
-                            <div class="invalid-feedback d-block">{{ $message }}</div>
-                        @enderror
-                    </div>
-                </div>
-
-                <!-- Profit Percentage Display -->
-                <div class="row g-3 mb-3">
-                    <div class="col-md-12">
-                        <div class="card bg-light border">
-                            <div class="card-body py-2">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <span class="fw-semibold">Profit Margin:</span>
-                                    <span id="profitPercentage" class="badge bg-success fs-6">0%</span>
+                <div class="row g-4">
+                    <!-- Left Column: General Info & Pricing -->
+                    <div class="col-lg-8">
+                        
+                        <!-- General Information Card -->
+                        <div class="card border-0 shadow-sm mb-4 overflow-hidden">
+                            <div class="card-header bg-white py-3 border-0">
+                                <h5 class="mb-0 fw-bold h6 text-primary"><i class="bi bi-info-circle me-2"></i>General Information</h5>
+                            </div>
+                            <div class="card-body p-4 pt-0">
+                                <div class="row g-3">
+                                    <div class="col-md-12">
+                                        <label class="form-label small fw-bold text-muted">Product Name <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control @error('name') is-invalid @enderror" 
+                                               name="name" placeholder="e.g. Paracetamol 500mg" value="{{ old('name', $product->name) }}" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small fw-bold text-muted">SKU (Stock Keeping Unit)</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text border-0 bg-light"><i class="bi bi-upc-scan"></i></span>
+                                            <input type="text" class="form-control border-0 bg-light shadow-none" 
+                                                   name="sku" placeholder="Auto-generated if empty" value="{{ old('sku', $product->sku) }}">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small fw-bold text-muted">Category</label>
+                                        <div class="d-flex gap-2">
+                                            <select class="form-select border-0 bg-light shadow-none" name="category_id">
+                                                <option value="">No Category</option>
+                                                @foreach ($categories as $category)
+                                                    <option value="{{ $category->id }}" @selected(old('category_id', $product->category_id) == $category->id)>
+                                                        {{ $category->name }}
+                                                    </option>
+                                                @endforeach
+                                            </select>
+                                            <a href="{{ route('categories.index') }}" class="btn btn-light btn-sm d-flex align-items-center px-3 border shadow-sm">+</a>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small fw-bold text-muted">Brand / Manufacturer</label>
+                                        <div class="d-flex gap-2">
+                                            <select class="form-select border-0 bg-light shadow-none" name="brand_id">
+                                                <option value="">No Brand</option>
+                                                @foreach ($brands as $brand)
+                                                    <option value="{{ $brand->id }}" @selected(old('brand_id', $product->brand_id) == $brand->id)>
+                                                        {{ $brand->name }}
+                                                    </option>
+                                                @endforeach
+                                            </select>
+                                            <a href="{{ route('brands.index') }}" class="btn btn-light btn-sm d-flex align-items-center px-3 border shadow-sm">+</a>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small fw-bold text-muted">Unit of Measure</label>
+                                        <select class="form-select border-0 bg-light shadow-none" name="unit_id">
+                                            <option value="">Select Unit</option>
+                                            @foreach ($units as $unit)
+                                                <option value="{{ $unit->id }}" @selected(old('unit_id', $product->unit_id) == $unit->id)>
+                                                    {{ $unit->name }} ({{ $unit->short_name }})
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                    </div>
                                 </div>
-                                <small class="text-muted">Automatically calculated based on Purchase and Selling Price</small>
+                            </div>
+                        </div>
+
+                        <!-- Pricing & Margin Card -->
+                        <div class="card border-0 shadow-sm mb-4 overflow-hidden">
+                            <div class="card-header bg-white py-3 border-0">
+                                <h5 class="mb-0 fw-bold h6 text-primary"><i class="bi bi-cash-stack me-2"></i>Pricing & Margins</h5>
+                            </div>
+                            <div class="card-body p-4 pt-0">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label small fw-bold text-muted">Purchase Price <span class="text-danger">*</span></label>
+                                        <div class="input-group">
+                                            <span class="input-group-text border-0 bg-light">MWK</span>
+                                            <input type="number" class="form-control border-0 bg-light shadow-none fw-bold" 
+                                                   name="purchase_price" step="0.01" min="0" value="{{ old('purchase_price', $product->purchase_price) }}" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small fw-bold text-muted">Selling Price <span class="text-danger">*</span></label>
+                                        <div class="input-group">
+                                            <span class="input-group-text border-0 bg-light">MWK</span>
+                                            <input type="number" class="form-control border-0 bg-light shadow-none fw-bold text-primary" 
+                                                   name="selling_price" step="0.01" min="0" value="{{ old('selling_price', $product->selling_price) }}" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <div class="p-3 rounded-3 bg-light d-flex align-items-center justify-content-between border">
+                                            <div>
+                                                <div class="small fw-bold text-muted text-uppercase x-small mb-1">Estimated Profit Margin</div>
+                                                <div class="h5 mb-0 fw-bold" id="profitDisplay">MWK 0.00</div>
+                                            </div>
+                                            <div class="text-end">
+                                                <div class="badge rounded-pill px-3 py-2 fs-6 bg-success" id="marginBadge">0%</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Description -->
+                        <div class="card border-0 shadow-sm mb-4 overflow-hidden">
+                            <div class="card-header bg-white py-3 border-0">
+                                <h5 class="mb-0 fw-bold h6 text-primary"><i class="bi bi-card-text me-2"></i>Product Description</h5>
+                            </div>
+                            <div class="card-body p-4 pt-0">
+                                <textarea class="form-control border-0 bg-light shadow-none" name="description" rows="4" placeholder="Enter clinical notes, usage instructions, or composition details...">{{ old('description', $product->description) }}</textarea>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Description and Image -->
-                <div class="row g-3 mb-3">
-                    <div class="col-md-8">
-                        <label class="form-label fw-semibold small">Product Description:</label>
-                        <textarea class="form-control form-control-sm @error('description') is-invalid @enderror" 
-                                  name="description" rows="6" placeholder="Enter product description...">{{ old('description', $product->description) }}</textarea>
-                        @error('description')
-                            <div class="invalid-feedback d-block">{{ $message }}</div>
-                        @enderror
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-semibold small">Product Image:</label>
-                        @if ($product->image)
-                            <div class="mb-2">
-                                <img src="{{ asset('storage/' . $product->image) }}" alt="{{ $product->name }}" class="img-fluid rounded" style="max-width: 200px;">
+                    <!-- Right Column: Inventory & Supplier -->
+                    <div class="col-lg-4">
+                        
+                        <!-- Inventory Stats Card -->
+                        <div class="card border-0 shadow-sm mb-4 overflow-hidden border-top border-4 border-primary">
+                            <div class="card-header bg-white py-3 border-0">
+                                <h5 class="mb-0 fw-bold h6 text-primary"><i class="bi bi-box-seam me-2"></i>Inventory Status</h5>
                             </div>
-                        @endif
-                        <div class="border rounded p-4 text-center">
-                            <input type="file" class="form-control form-control-sm d-none" id="imageInput" 
-                                   name="image" accept="image/*">
-                            <button type="button" class="btn btn-primary btn-sm fw-semibold" onclick="document.getElementById('imageInput').click()">
-                                📷 Browse..
-                            </button>
-                            <p class="text-muted small mt-2 mb-0">Max File size: 5MB</p>
-                            <p class="text-muted small mb-0">Aspect ratio should be 1:1</p>
-                            <small id="fileName" class="text-muted d-block mt-2"></small>
+                            <div class="card-body p-4 pt-0 text-center">
+                                <div class="p-3 rounded-3 bg-primary mb-3 shadow-sm">
+                                    <div class="small fw-bold text-white opacity-75 text-uppercase x-small">Current Stock</div>
+                                    <div class="h3 fw-bold mb-0 text-white">{{ number_format($product->current_stock) }}</div>
+                                </div>
+                                <div class="d-grid">
+                                    <a href="{{ route('stock-adjustments.create', ['product_id' => $product->id]) }}" class="btn btn-primary btn-sm fw-semibold">
+                                        <i class="bi bi-arrow-repeat me-1"></i> Adjust Stock
+                                    </a>
+                                </div>
+                                <div class="row g-2">
+                                    <div class="col-12 text-start">
+                                        <label class="form-label small fw-bold text-muted">Alert Quantity</label>
+                                        <input type="number" class="form-control border-0 bg-light shadow-none" 
+                                               name="alert_quantity" step="0.01" min="0" value="{{ old('alert_quantity', $product->alert_quantity) }}">
+                                    </div>
+                                    <div class="col-12 text-start">
+                                        <label class="form-label small fw-bold text-muted">Expiry Date</label>
+                                        <input type="date" class="form-control border-0 bg-light shadow-none" 
+                                               name="expiry_date" value="{{ old('expiry_date', $product->expiry_date) }}">
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        @error('image')
-                            <div class="text-danger small mt-2">{{ $message }}</div>
-                        @enderror
+
+                        <!-- Supplier Card -->
+                        <div class="card border-0 shadow-sm mb-4 overflow-hidden">
+                            <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0 fw-bold h6 text-primary"><i class="bi bi-truck me-2"></i>Supplier</h5>
+                                <button type="button" class="btn btn-primary btn-sm rounded-pill px-3" data-bs-toggle="modal" data-bs-target="#addSupplierModal">
+                                    <i class="bi bi-plus-lg"></i> New
+                                </button>
+                            </div>
+                            <div class="card-body p-4 pt-0">
+                                <select class="form-select border-0 bg-light shadow-none mb-3" name="supplier_id" id="supplierSelect">
+                                    <option value="">Select Supplier</option>
+                                    @foreach ($suppliers as $supplier)
+                                        <option value="{{ $supplier->id }}" 
+                                                data-contact="{{ $supplier->contact_person ?? 'N/A' }}"
+                                                data-phone="{{ $supplier->phone ?? 'N/A' }}"
+                                                data-email="{{ $supplier->email ?? 'N/A' }}"
+                                                @selected(old('supplier_id', $product->supplier_id) == $supplier->id)>
+                                            {{ $supplier->name }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                                
+                                <div id="supplierPreview" class="p-3 rounded-3 bg-light border" style="display: none;">
+                                    <div class="small fw-bold text-dark mb-1" id="previewName">Supplier Name</div>
+                                    <div class="text-muted x-small mb-1"><i class="bi bi-person me-1"></i> <span id="previewContact">Contact</span></div>
+                                    <div class="text-muted x-small"><i class="bi bi-telephone me-1"></i> <span id="previewPhone">Phone</span></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Image Card -->
+                        <div class="card border-0 shadow-sm mb-4 overflow-hidden">
+                            <div class="card-header bg-white py-3 border-0">
+                                <h5 class="mb-0 fw-bold h6 text-primary"><i class="bi bi-image me-2"></i>Product Image</h5>
+                            </div>
+                            <div class="card-body p-4 pt-0">
+                                <div class="image-upload-wrapper border-2 border-dashed rounded-3 p-4 text-center bg-light">
+                                    <input type="file" name="image" id="imageInput" class="d-none" accept="image/*">
+                                    <div id="imagePlaceholder" class="{{ $product->image ? 'd-none' : '' }}">
+                                        <i class="bi bi-cloud-arrow-up fs-1 text-muted opacity-50 mb-2 d-block"></i>
+                                        <button type="button" class="btn btn-outline-primary btn-sm px-4" onclick="document.getElementById('imageInput').click()">Browse Image</button>
+                                        <p class="x-small text-muted mt-2 mb-0">JPEG, PNG up to 5MB</p>
+                                    </div>
+                                    <div id="imagePreview" class="{{ $product->image ? '' : 'd-none' }}">
+                                        <img src="{{ $product->image ? asset('storage/' . $product->image) : '' }}" class="img-fluid rounded-3 mb-2 shadow-sm" style="max-height: 150px;">
+                                        <button type="button" class="btn btn-danger btn-sm px-3" onclick="resetImage()">Remove</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
 
-                <!-- Submit Button -->
-                <div class="text-end mt-4">
-                    <button type="submit" class="btn btn-primary fw-semibold">
-                        <i class="bi bi-check-circle"></i> Update Product
+                <!-- Footer Actions -->
+                <div class="sticky-bottom bg-white border-top p-3 shadow-lg d-flex justify-content-end gap-2 mt-4 mx-n4 mb-n4 rounded-bottom">
+                    <button type="button" onclick="history.back()" class="btn btn-light border px-4 fw-bold">Cancel</button>
+                    <button type="submit" class="btn btn-primary px-5 fw-bold shadow">
+                        <i class="bi bi-check-circle me-2"></i>Update Product
                     </button>
+                </div>
+            </form>
+        </main>
+    </div>
+</div>
+
+<!-- Add Supplier Modal -->
+<div class="modal fade" id="addSupplierModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header border-0 bg-primary text-white">
+                <h5 class="modal-title fw-bold h6"><i class="bi bi-person-plus me-2"></i>Add Quick Supplier</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="addSupplierForm">
+                <div class="modal-body p-4">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label small fw-bold text-muted">Supplier Name *</label>
+                            <input type="text" class="form-control border-0 bg-light" name="name" required placeholder="e.g. MedLab Pharma">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-muted">Contact Person</label>
+                            <input type="text" class="form-control border-0 bg-light" name="contact_person" placeholder="e.g. John Doe">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold text-muted">Phone Number</label>
+                            <input type="tel" class="form-control border-0 bg-light" name="phone" placeholder="+265...">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small fw-bold text-muted">Email Address</label>
+                            <input type="email" class="form-control border-0 bg-light" name="email" placeholder="supplier@example.com">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 p-4 pt-0">
+                    <button type="button" class="btn btn-light border" data-bs-dismiss="modal">Discard</button>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold shadow">Create Supplier</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<script>
-    // Show selected filename
-    document.getElementById('imageInput').addEventListener('change', function() {
-        const fileName = this.files[0]?.name || '';
-        document.getElementById('fileName').textContent = fileName ? `Selected: ${fileName}` : '';
-    });
-
-    // Display supplier information
-    document.getElementById('supplierSelect').addEventListener('change', function() {
-        const selectedOption = this.options[this.selectedIndex];
-        const supplierInfo = document.getElementById('supplierInfo');
-        
-        if (this.value) {
-            const contact = selectedOption.dataset.contact || 'N/A';
-            const phone = selectedOption.dataset.phone || 'N/A';
-            const email = selectedOption.dataset.email || 'N/A';
-            
-            supplierInfo.innerHTML = `
-                <div class="small">
-                    <strong>Contact:</strong> ${contact}<br>
-                    <strong>Phone:</strong> ${phone}<br>
-                    <strong>Email:</strong> ${email}
-                </div>
-            `;
-        } else {
-            supplierInfo.innerHTML = 'No supplier selected';
-        }
-    });
-
-    // Calculate profit percentage
-    function calculateProfitPercentage() {
-        const purchasePrice = parseFloat(document.querySelector('input[name="purchase_price"]').value) || 0;
-        const sellingPrice = parseFloat(document.querySelector('input[name="selling_price"]').value) || 0;
-        
-        if (purchasePrice > 0 && sellingPrice > 0) {
-            const profit = sellingPrice - purchasePrice;
-            const profitPercentage = ((profit / purchasePrice) * 100).toFixed(2);
-            const profitElement = document.getElementById('profitPercentage');
-            
-            // Update display
-            profitElement.textContent = profitPercentage + '%';
-            
-            // Update badge color based on profit margin
-            profitElement.className = 'badge fs-6';
-            if (profitPercentage < 10) {
-                profitElement.classList.add('bg-danger'); // Low margin
-            } else if (profitPercentage < 20) {
-                profitElement.classList.add('bg-warning'); // Medium margin
-            } else {
-                profitElement.classList.add('bg-success'); // Good margin
-            }
-        } else {
-            document.getElementById('profitPercentage').textContent = '0%';
-        }
+<style>
+    .x-small { font-size: 0.7rem; }
+    .tracking-wider { letter-spacing: 1px; }
+    .border-dashed { border-style: dashed !important; }
+    .sticky-bottom { position: sticky; bottom: 0; z-index: 1020; }
+    
+    .form-control:focus, .form-select:focus {
+        background-color: #fff !important;
+        border: 1px solid #0d6efd !important;
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.1) !important;
     }
+</style>
 
-    // Add event listeners
-    document.querySelector('input[name="purchase_price"]').addEventListener('input', calculateProfitPercentage);
-    document.querySelector('input[name="selling_price"]').addEventListener('input', calculateProfitPercentage);
-
-    // Initialize on page load
+@section('scripts')
+<script>
     document.addEventListener('DOMContentLoaded', function() {
-        calculateProfitPercentage();
+        const pInput = document.querySelector('input[name="purchase_price"]');
+        const sInput = document.querySelector('input[name="selling_price"]');
+        const profitDisplay = document.getElementById('profitDisplay');
+        const marginBadge = document.getElementById('marginBadge');
         
-        // Trigger supplier info display if supplier is pre-selected
-        const supplierSelect = document.getElementById('supplierSelect');
-        if (supplierSelect.value) {
-            supplierSelect.dispatchEvent(new Event('change'));
+        function updateMargins() {
+            const p = parseFloat(pInput.value) || 0;
+            const s = parseFloat(sInput.value) || 0;
+            const profit = s - p;
+            const margin = p > 0 ? (profit / p) * 100 : 0;
+            
+            profitDisplay.textContent = 'MWK ' + profit.toLocaleString(undefined, {minimumFractionDigits: 2});
+            marginBadge.textContent = margin.toFixed(1) + '%';
+            
+            marginBadge.className = 'badge rounded-pill px-3 py-2 fs-6 ' + 
+                (margin < 10 ? 'bg-danger' : (margin < 25 ? 'bg-warning text-dark' : 'bg-success'));
         }
+
+        pInput.addEventListener('input', updateMargins);
+        sInput.addEventListener('input', updateMargins);
+        updateMargins();
+
+        // Supplier Preview Logic
+        const supplierSelect = document.getElementById('supplierSelect');
+        const supplierPreview = document.getElementById('supplierPreview');
+        const previewName = document.getElementById('previewName');
+        const previewContact = document.getElementById('previewContact');
+        const previewPhone = document.getElementById('previewPhone');
+
+        function updateSupplierPreview() {
+            const opt = supplierSelect.options[supplierSelect.selectedIndex];
+            if (supplierSelect.value) {
+                previewName.textContent = opt.text;
+                previewContact.textContent = opt.dataset.contact || 'N/A';
+                previewPhone.textContent = opt.dataset.phone || 'N/A';
+                supplierPreview.style.display = 'block';
+            } else {
+                supplierPreview.style.display = 'none';
+            }
+        }
+
+        supplierSelect.addEventListener('change', updateSupplierPreview);
+        updateSupplierPreview();
+
+        // Image Preview Logic
+        const imageInput = document.getElementById('imageInput');
+        const imagePlaceholder = document.getElementById('imagePlaceholder');
+        const imagePreview = document.getElementById('imagePreview');
+        const previewImg = imagePreview.querySelector('img');
+
+        imageInput.addEventListener('change', function() {
+            const file = this.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    previewImg.src = e.target.result;
+                    imagePlaceholder.classList.add('d-none');
+                    imagePreview.classList.remove('d-none');
+                }
+                reader.readAsDataURL(file);
+            }
+        });
+
+        window.resetImage = function() {
+            imageInput.value = '';
+            imagePlaceholder.classList.remove('d-none');
+            imagePreview.classList.add('d-none');
+        };
+
+        // Modal Form Handling
+        const supplierForm = document.getElementById('addSupplierForm');
+        supplierForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const btn = this.querySelector('button[type="submit"]');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Creating...';
+            btn.disabled = true;
+
+            const formData = new FormData(this);
+            fetch('{{ route('contacts.store.supplier') }}', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                }
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const newOpt = new Option(data.supplier.name, data.supplier.id);
+                    newOpt.dataset.contact = data.supplier.contact_person || 'N/A';
+                    newOpt.dataset.phone = data.supplier.phone || 'N/A';
+                    newOpt.dataset.email = data.supplier.email || 'N/A';
+                    
+                    supplierSelect.add(newOpt);
+                    supplierSelect.value = data.supplier.id;
+                    updateSupplierPreview();
+                    
+                    bootstrap.Modal.getInstance(document.getElementById('addSupplierModal')).hide();
+                    supplierForm.reset();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(err => alert('An unexpected error occurred.'))
+            .finally(() => {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            });
+        });
     });
 </script>
+@endsection
 @endsection

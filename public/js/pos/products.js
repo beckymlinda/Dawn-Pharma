@@ -22,6 +22,11 @@ POSProducts.state = {
 POSProducts.init = function() {
     console.log('POS Products module initializing...');
     
+    // Show loading modal if we have a lot of products to process or if loading from server
+    if (typeof productsData !== 'undefined' && productsData.length > 500) {
+        POSApp.modal.show('productLoadingModal');
+    }
+    
     // Make functions globally available for onclick handlers
     window.filterProducts = POSProducts.filterProducts;
     window.addToCartClickDelayed = POSProducts.addToCartClickDelayed;
@@ -32,12 +37,23 @@ POSProducts.init = function() {
     if (typeof productsData !== 'undefined' && productsData.length > 0) {
         POSProducts.state.productsData = productsData;
         console.log('Products loaded from server in POSProducts module:', POSProducts.state.productsData.length);
+        // Hide modal after short delay to ensure UI is ready
+        setTimeout(function() {
+            POSApp.modal.hide('productLoadingModal');
+        }, 500);
     } else {
         console.log('Products data not available yet, will be initialized later');
     }
     
     console.log('POS Products module initialized');
 };
+
+// Auto-initialize if POSApp is already ready
+if (window.POSApp && window.POSApp.state && window.POSApp.state.initialized) {
+    POSProducts.init();
+} else {
+    // If POSApp isn't ready, it will call init() when it is ready
+}
 
 // Function to initialize products data after DOM is ready
 POSProducts.initializeProductsData = function(data) {
@@ -133,6 +149,7 @@ POSProducts.loadProducts = function() {
     
     POSProducts.state.isLoading = true;
     console.log('Loading products...');
+    POSApp.modal.show('productLoadingModal');
     
     // Try to load from cache first
     try {
@@ -167,7 +184,9 @@ POSProducts.loadProducts = function() {
     
     fetch(POSApp.config.apiEndpoints.productsRefresh, {
         method: 'GET',
+        credentials: 'same-origin',
         headers: {
+            'Accept': 'application/json',
             'X-Requested-With': 'XMLHttpRequest',
             'X-CSRF-TOKEN': csrfToken,
             'Cache-Control': 'no-cache'
@@ -221,6 +240,7 @@ POSProducts.loadProducts = function() {
     })
     .finally(function() {
         POSProducts.state.isLoading = false;
+        POSApp.modal.hide('productLoadingModal');
     });
 };
 
@@ -303,14 +323,8 @@ POSProducts.addToCartClickDelayed = function(productId, quantity, event) {
     POSProducts.addToCartClick(productId, quantity);
 };
 
-/**
- * Add product to cart
- */
 POSProducts.addToCartClick = function(productId, quantity) {
-    console.log('Adding to cart:', productId, quantity);
-    console.log('Call stack trace:', new Error().stack);
-    console.log('Event type:', event ? event.type : 'No event object');
-    console.log('Event target:', event ? event.target : 'No event object');
+    console.log('Adding to cart (Client-Side):', productId, quantity);
     
     const searchInput = document.getElementById('cartSearch');
     const dropdown = document.getElementById('searchDropdown');
@@ -318,100 +332,56 @@ POSProducts.addToCartClick = function(productId, quantity) {
     if (searchInput) searchInput.value = '';
     if (dropdown) dropdown.style.display = 'none';
     
-    // Get CSRF token first
-    const csrfToken = POSApp.utils.getCsrfToken();
-    if (!csrfToken) {
-        console.error('CSRF token not found');
-        alert('Error: Security token not found');
+    // Find product
+    const product = POSProducts.state.productsData.find(p => p.id == productId);
+    if (!product) {
+        POSApp.utils.showNotification('Product not found', 'error');
         return;
     }
-    
-    const requestData = {
-        product_id: productId,
-        quantity: quantity
-    };
-    
-    console.log('📤 Sending add to cart request:', requestData);
-    console.log('📡 API endpoint:', POSApp.config.apiEndpoints.cartAdd);
-    console.log('🔍 Request body:', JSON.stringify(requestData, null, 2));
-    console.log('🔍 Request headers:', {
-        'Content-Type': 'application/json',
-        'X-CSRF-TOKEN': csrfToken ? 'present' : 'missing',
-        'X-Requested-With': 'XMLHttpRequest'
-    });
-    
-    fetch(POSApp.config.apiEndpoints.cartAdd, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken,
-            'X-Requested-With': 'XMLHttpRequest'
-        },
-        body: JSON.stringify(requestData)
-    })
-    .then(function(response) {
-        if (!response.ok) {
-            return response.json().then(function(errorData) {
-                const serverMessage = errorData && (errorData.error || errorData.message)
-                    ? (errorData.error || errorData.message)
-                    : null;
 
-                if (serverMessage) {
-                    throw new Error(serverMessage);
-                }
+    if (product.current_stock < quantity) {
+        POSApp.utils.showNotification('Insufficient stock. Available: ' + product.current_stock, 'warning');
+        return;
+    }
 
-                throw new Error('Request failed with status ' + response.status + ' ' + response.statusText);
-            }).catch(function(parseError) {
-                throw new Error('Request failed with status ' + response.status + ' ' + response.statusText + (parseError && parseError.message ? ' (' + parseError.message + ')' : ''));
-            });
-        }
-        return response.json();
-    })
-    .then(function(data) {
-        console.log('Cart API response:', data);
+    // Initialize cart if needed
+    window.POSCart.state.items = window.POSCart.state.items || [];
+    
+    // Check if already in cart
+    const existingIndex = window.POSCart.findCartItemIndex(productId);
+    
+    if (existingIndex !== -1) {
+        const currentQty = parseFloat(window.POSCart.state.items[existingIndex].quantity) || 0;
+        const newQty = currentQty + parseFloat(quantity);
         
-        if (data.success) {
-            if (data.cart && Array.isArray(data.cart)) {
-                if (window.POSCart) {
-                    window.POSCart.state.items = data.cart;
-                }
-            } else {
-                console.warn('Cart data is not in expected format:', data.cart);
-                if (window.POSCart) {
-                    window.POSCart.state.items = [];
-                }
-            }
-            
-            console.log('Updated cart array:', window.POSCart ? window.POSCart.state.items : 'Cart module not loaded');
-            
-            if (window.POSCart) {
-                window.POSCart.renderCart();
-            }
-            
-            const product = POSProducts.state.productsData.find(function(p) { return p.id == productId; });
-            if (product) {
-                POSApp.utils.showNotification(product.name + ' added to cart', 'success');
-            }
-            
-            // Show warning if present (for low stock items)
-            if (data.warning) {
-                POSApp.utils.showNotification(data.warning, 'warning');
-            }
-            
-            console.log('Product added to cart successfully:', data);
-        } else {
-            console.error('Error adding to cart:', data.error);
-            const errorMessage = data.error || 'Unknown error';
-            const alertType = errorMessage.toLowerCase().includes('out of stock') ? 'warning' : 'danger';
-            POSApp.utils.showNotification(errorMessage, alertType);
+        if (product.current_stock < newQty) {
+            POSApp.utils.showNotification('Insufficient stock. Available: ' + product.current_stock, 'warning');
+            return;
         }
-    })
-    .catch(function(error) {
-        console.error('Add to cart error:', error);
-        const errorMessage = error.message || 'Error adding product to cart.';
-        const alertType = errorMessage.toLowerCase().includes('out of stock') ? 'warning' : 'danger';
-        POSApp.utils.showNotification(errorMessage, alertType);
-    });
+        window.POSCart.state.items[existingIndex].quantity = newQty;
+        window.POSCart.state.items[existingIndex].subtotal = newQty * parseFloat(product.selling_price);
+    } else {
+        window.POSCart.state.items.push({
+            id: product.id,
+            product_id: product.id,
+            name: product.name,
+            sku: product.sku,
+            price: product.selling_price,
+            selling_price: product.selling_price,
+            purchase_price: product.purchase_price,
+            quantity: parseFloat(quantity),
+            subtotal: parseFloat(quantity) * parseFloat(product.selling_price),
+            product: product
+        });
+    }
+
+    // Render cart and save to local storage immediately
+    if (window.POSCart) {
+        window.POSCart.renderCart();
+        localStorage.setItem('pos_local_cart', JSON.stringify(window.POSCart.state.items));
+    }
+    
+    POSApp.utils.showNotification(product.name + ' added to cart', 'success');
 };
 
 /**

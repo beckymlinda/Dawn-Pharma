@@ -5,7 +5,6 @@ namespace Database\Seeders;
 use App\Models\Permission;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
-
 class PermissionSeeder extends Seeder
 {
     /**
@@ -193,7 +192,7 @@ class PermissionSeeder extends Seeder
             ['name' => 'manage_budget', 'display_name' => 'Manage Budget', 'group' => 'Accounting'],
             
             // Stock Management Permissions
-            ['name' => 'view_stock_report', 'display_name' => 'View Stock Report', 'group' => 'Stock'],
+            
             ['name' => 'export_stock_report', 'display_name' => 'Export Stock Report', 'group' => 'Stock'],
             ['name' => 'view_stock_expiry_report', 'display_name' => 'View Stock Expiry Report', 'group' => 'Stock'],
             ['name' => 'create_stock_adjustment', 'display_name' => 'Create Stock Adjustment', 'group' => 'Stock'],

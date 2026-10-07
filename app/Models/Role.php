@@ -48,6 +48,11 @@ class Role extends Model
             return true;
         }
 
+        // If permissions are already loaded, check the collection to avoid N+1 queries
+        if ($this->relationLoaded('permissions')) {
+            return $this->permissions->contains('name', $permission);
+        }
+
         return $this->permissions()->where('name', $permission)->exists();
     }
 }

@@ -4,15 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>@yield('title', 'EDUC Pharmacy')</title>
+    <title>@yield('title', $settings['system_name'] ?? 'CNC Health Care')</title>
     <!-- Favicon -->
-    <link rel="icon" type="image/png" href="{{ asset('assets/images/favicon.png') }}">
+    <link rel="icon" type="image/jpeg" href="{{ isset($settings['favicon']) ? asset($settings['favicon']) : asset('assets/images/logo.jpeg') }}">
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Bootstrap Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
     <!-- Custom CSS -->
     <link href="{{ asset('assets/css/style.css') }}" rel="stylesheet">
+    <style>
+        :root {
+            --theme-primary: {{ $settings['primary_color'] ?? '#004d3d' }};
+            --theme-secondary: {{ $settings['secondary_color'] ?? '#006b54' }};
+        }
+        .bg-primary { background-color: var(--theme-primary) !important; }
+        .text-primary { color: var(--theme-primary) !important; }
+        .btn-primary { background-color: var(--theme-primary) !important; border-color: var(--theme-primary) !important; }
+        .btn-outline-primary { color: var(--theme-primary) !important; border-color: var(--theme-primary) !important; }
+        .btn-outline-primary:hover { background-color: var(--theme-primary) !important; color: white !important; }
+    </style>
 </head>
 <body>
 <div class="d-flex" id="wrapper">
@@ -23,8 +34,8 @@
     <!-- Sidebar -->
     <div class="border-end bg-white" id="sidebar-wrapper" style="width: 250px;">
     
-    <div class="sidebar-heading border-bottom bg-light d-flex justify-content-between align-items-center">
-        <img src="{{ asset('assets/images/logo.png') }}" alt="EDUC Pharmacy" style="height: 40px; width: auto;">
+    <div class="sidebar-heading border-bottom d-flex justify-content-between align-items-center">
+        <img src="{{ isset($settings['logo']) ? asset($settings['logo']) : asset('assets/images/logo.jpeg') }}" alt="{{ $settings['system_name'] ?? 'CNC Health Care' }}" style="height: 50px; width: auto; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));">
         <span class="text-success">&bull;</span>
     </div>
 
@@ -139,16 +150,24 @@
                class="list-group-item list-group-item-action border-0 {{ request()->routeIs('stock-adjustments.create') ? 'active' : '' }}">
                 <i class="bi bi-plus-lg me-2"></i> New Adjustment
             </a>
+
+            <!-- Bulk Upload -->
+            <a href="{{ route('stock-adjustments.bulk') }}"
+               class="list-group-item list-group-item-action border-0 {{ request()->routeIs('stock-adjustments.bulk*') ? 'active' : '' }}">
+                <i class="bi bi-cloud-upload me-2"></i> Bulk Upload
+            </a>
             @endif
 
         </div>
         @endif
 
         <!-- Activity Log -->
+        @if(auth()->user()->hasRole('admin') || auth()->user()->hasRole('super_admin'))
         <a href="{{ route('activity-log.index') }}" 
            class="list-group-item list-group-item-action p-3 {{ request()->routeIs('activity-log.*') ? 'active' : '' }}">
             <i class="bi bi-clock-history me-2"></i> Activity Log
         </a>
+        @endif
 
 <div class="list-group-item p-0 border-0">
 
@@ -190,6 +209,14 @@
             <a href="{{ route('stock.report') }}"
                class="list-group-item list-group-item-action border-0 {{ request()->routeIs('stock.report') ? 'active' : '' }}">
                 <i class="bi bi-box-seam me-2"></i> Stock Report
+            </a>
+            @endif
+
+            <!-- Low Stock Report -->
+            @if(auth()->user()->hasPermission('view_stock_report'))
+            <a href="{{ route('reports.low-stock') }}"
+               class="list-group-item list-group-item-action border-0 {{ request()->routeIs('reports.low-stock') ? 'active' : '' }}">
+                <i class="bi bi-exclamation-triangle me-2"></i> Low Stock Report
             </a>
             @endif
 
@@ -236,6 +263,14 @@
         </div>
         @endif
 
+        <!-- Settings -->
+        @if(auth()->user()->hasRole('super_admin') || auth()->user()->hasRole('admin'))
+        <a href="{{ route('settings.index') }}" 
+           class="list-group-item list-group-item-action p-3 {{ request()->routeIs('settings.*') ? 'active' : '' }}">
+            <i class="bi bi-gear-fill me-2"></i> System Settings
+        </a>
+        @endif
+
 </div>
          
     </div>
@@ -249,16 +284,12 @@
         <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom">
             <div class="container-fluid">
                 <button class="btn btn-primary" id="sidebarToggle"><i class="bi bi-list"></i></button>
-                <span class="navbar-text ms-3">{{ now()->format('l, F j, Y') }} 👋</span>
                 <div class="collapse navbar-collapse justify-content-end">
                     <ul class="navbar-nav ms-auto mt-2 mt-lg-0">
                         <li class="nav-item me-3">
                             <a href="{{ route('pos.new') }}" class="nav-link text-white" title="Open POS">
                                 <i class="bi bi-qr-code-scan"></i>
                             </a>
-                        </li>
-                        <li class="nav-item me-3">
-                            <input type="date" class="form-control form-control-sm" />
                         </li>
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle" id="userDropdown" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -283,7 +314,34 @@
         </nav>
 
         <!-- Main Content -->
-        <div class="container-fluid p-4">
+        <div class="content-container">
+            @if(session('success'))
+                <div class="alert alert-success alert-dismissible fade show border-0 shadow-sm mb-4" role="alert">
+                    <i class="bi bi-check-circle me-2"></i>
+                    {{ session('success') }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            @endif
+
+            @if(session('error'))
+                <div class="alert alert-danger alert-dismissible fade show border-0 shadow-sm mb-4" role="alert">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    {{ session('error') }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            @endif
+
+            @if($errors->any())
+                <div class="alert alert-danger alert-dismissible fade show border-0 shadow-sm mb-4" role="alert">
+                    <ul class="mb-0">
+                        @foreach($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            @endif
+
             @yield('content')
         </div>
     </div>
@@ -295,281 +353,147 @@
     -->
 
 <style>
-
-    /* ===== Top Navbar Blue Gradient ===== */
-.navbar {
-    background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%);
-    color: #ffffff;
-    border: none !important;
-}
-
-/* Navbar text */
-.navbar .navbar-text,
-.navbar .nav-link,
-.navbar .dropdown-toggle {
-    color: #ffffff !important;
-}
-
-/* Hover effect */
-.navbar .nav-link:hover,
-.navbar .dropdown-toggle:hover {
-    color: #e0e0e0 !important;
-}
-
-/* QR Code icon styling */
-.navbar .nav-link .bi-qr-code-scan {
-    font-size: 1.2rem;
-    transition: transform 0.2s ease;
-}
-
-.navbar .nav-link:hover .bi-qr-code-scan {
-    transform: scale(1.1);
-}
-
-/* Date input styling inside navbar */
-.navbar input[type="date"] {
-    background-color: rgba(255,255,255,0.15);
-    border: none;
-    color: #ffffff;
-}
-
-.navbar input[type="date"]::-webkit-calendar-picker-indicator {
-    filter: invert(1);
-}
-
-/* Sidebar header (to match top blue section in screenshot) */
-.sidebar-heading {
-    background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%);
-    color: #ffffff;
-    font-weight: 600;
-    padding: 15px;
-}
-
-/* POS Screen Styling */
-.pos-wrapper {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    background: #f5f5f5;
-    overflow: hidden;
-}
-
-.pos-header {
-    background: #ffffff;
-    border-bottom: 1px solid #ddd;
-    padding: 12px 20px;
-    display: flex;
-    align-items: center;
-    gap: 15px;
-    height: auto;
-    flex-shrink: 0;
-}
-
-.pos-header .badge {
-    padding: 6px 12px;
-    font-size: 12px;
-    white-space: nowrap;
-}
-
-.toolbar-btn {
-    background: #f0f0f0;
-    border: 1px solid #ddd;
-    padding: 8px 16px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 13px;
-    white-space: nowrap;
-    transition: all 0.2s;
-}
-
-.toolbar-btn:hover {
-    background: #e8e8e8;
-    border-color: #999;
-}
-
-.pos-bottom-bar {
-    background: #ffffff;
-    border-top: 1px solid #ddd;
-    padding: 12px 20px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    height: auto;
-    flex-shrink: 0;
-}
-
-.pos-bottom-bar .btn {
-    margin: 0;
-}
-
-.pos-product-card {
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 12px;
-    text-align: center;
-    background: white;
-    cursor: pointer;
-    transition: all 0.2s;
-    height: 100%;
-}
-
-.pos-product-card:hover {
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    border-color: #2563eb;
-}
-
-.pos-product-img {
-    width: 100%;
-    height: 100px;
-    background: #f0f0f0;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 8px;
-    font-size: 32px;
-    color: #ccc;
-}
-
-.pos-product-card .small {
-    display: block;
-    margin: 4px 0;
-    word-wrap: break-word;
-}
-
-/* Ensure flex layout works correctly */
-.d-flex {
-    display: flex;
-}
-
-.flex-grow-1 {
-    flex-grow: 1;
-}
-
-.flex-column {
-    flex-direction: column;
-}
-
-.overflow-hidden {
-    overflow: hidden;
-}
-
-.overflow-auto {
-    overflow: auto;
-}
-
-.border-end {
-    border-right: 1px solid #ddd;
-}
-
-/* Mobile Responsive Sidebar */
-@media (max-width: 768px) {
-    #sidebar-wrapper {
-        position: fixed;
-        top: 0;
-        left: -250px;
-        width: 250px;
-        height: 100vh;
-        z-index: 1050;
-        transition: left 0.3s ease;
-        box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-        background: white !important;
-        border-right: 1px solid #ddd;
-    }
-    
-    #sidebar-wrapper.show {
-        left: 0 !important;
-        display: block !important;
-    }
-    
-    #page-content-wrapper {
-        margin-left: 0;
-    }
-    
-    #wrapper.toggled #sidebar-wrapper {
-        left: 0 !important;
-    }
-    
-    #wrapper.toggled #page-content-wrapper {
-        margin-left: 0;
-    }
-    
-    /* Mobile overlay when sidebar is open */
-    .sidebar-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
+    /* Fixed Layout with Independent Scrolling */
+    html, body {
         height: 100%;
-        background: rgba(0,0,0,0.5);
-        z-index: 1040;
-        display: none;
-        opacity: 0;
-        transition: opacity 0.3s ease;
+        margin: 0;
+        overflow: hidden; /* Prevent body scroll */
     }
-    
-    .sidebar-overlay.show {
-        display: block !important;
-        opacity: 1 !important;
-    }
-    
-    /* Show toggle button on mobile */
-    #sidebarToggle {
-        display: block !important;
-        background: transparent;
-        border: 1px solid rgba(255,255,255,0.3);
-        color: white;
-        padding: 8px 12px;
-        border-radius: 4px;
-        transition: all 0.2s ease;
-    }
-    
-    #sidebarToggle:hover {
-        background: rgba(255,255,255,0.1);
-        border-color: rgba(255,255,255,0.5);
-    }
-}
 
-/* Desktop styles */
-@media (min-width: 769px) {
-    #sidebar-wrapper {
-        position: relative;
-        left: 0;
+    #wrapper {
+        height: 100vh;
+        width: 100vw;
+        display: flex;
+        overflow: hidden;
     }
-    
+
+    #sidebar-wrapper {
+        height: 100vh;
+        overflow-y: auto;
+        flex-shrink: 0;
+        z-index: 1000;
+        transition: all 0.25s ease-in-out;
+    }
+
     #page-content-wrapper {
-        margin-left: 0;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        flex-grow: 1;
+        overflow: hidden;
     }
-    
-    #wrapper.toggled #sidebar-wrapper {
-        margin-left: -250px;
-    }
-    
-    #wrapper.toggled #page-content-wrapper {
-        margin-left: 0;
-    }
-    
-    #sidebarToggle {
-        display: none !important;
-    }
-    
-    .sidebar-overlay {
-        display: none !important;
-    }
-}
 
-/* Ensure sidebar is hidden by default on mobile */
-@media (max-width: 768px) {
-    #sidebar-wrapper {
-        left: -250px !important;
-        display: block !important;
+    .navbar {
+        flex-shrink: 0;
+        z-index: 999;
+        background: linear-gradient(90deg, var(--theme-primary) 0%, var(--theme-secondary) 100%);
+        color: #ffffff;
+        border: none !important;
     }
-    
-    .sidebar-overlay {
-        display: none !important;
-        opacity: 0 !important;
+
+    /* Main Content Area with Scroll */
+    .content-container {
+        flex-grow: 1;
+        overflow-y: auto;
+        padding: 1.5rem;
+        background-color: #f8f9fa;
     }
-}
+
+    /* Scrollbar Styling */
+    ::-webkit-scrollbar {
+        width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+        background: #f1f1f1;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: #cbd5e0;
+        border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: #a0aec0;
+    }
+
+    /* Navbar text */
+    .navbar .navbar-text,
+    .navbar .nav-link,
+    .navbar .dropdown-toggle {
+        color: #ffffff !important;
+    }
+
+    /* Hover effect */
+    .navbar .nav-link:hover,
+    .navbar .dropdown-toggle:hover {
+        color: #e0e0e0 !important;
+    }
+
+    /* QR Code icon styling */
+    .navbar .nav-link .bi-qr-code-scan {
+        font-size: 1.2rem;
+        transition: transform 0.2s ease;
+    }
+
+    .navbar .nav-link:hover .bi-qr-code-scan {
+        transform: scale(1.1);
+    }
+
+    /* Date input styling inside navbar */
+    .navbar input[type="date"] {
+        background-color: rgba(255,255,255,0.15);
+        border: none;
+        color: #ffffff;
+    }
+
+    .navbar input[type="date"]::-webkit-calendar-picker-indicator {
+        filter: invert(1);
+    }
+
+    /* Sidebar header */
+    .sidebar-heading {
+        background: #fff9e6;
+        color: #004d3d;
+        font-weight: 600;
+        padding: 15px;
+    }
+
+    /* Sidebar Links */
+    .list-group-item {
+        border: none;
+        padding: 0.75rem 1.25rem;
+        font-size: 0.9rem;
+    }
+    .list-group-item.active {
+        background-color: #f0fdf4;
+        color: var(--theme-primary);
+        border-right: 4px solid var(--theme-primary);
+        font-weight: 600;
+    }
+    .list-group-item:hover:not(.active) {
+        background-color: #f8f9fa;
+    }
+
+    /* Mobile Responsive Sidebar */
+    @media (max-width: 768px) {
+        #sidebar-wrapper {
+            position: fixed;
+            left: -250px;
+        }
+        #sidebar-wrapper.show {
+            left: 0;
+        }
+        #sidebarToggle {
+            display: block !important;
+        }
+    }
+
+    @media (min-width: 769px) {
+        #sidebarToggle {
+            display: block !important; /* Always show toggle on desktop too */
+        }
+        #wrapper.toggled #sidebar-wrapper {
+            margin-left: -250px;
+        }
+    }
 </style>
     <!-- Bootstrap JS and dependencies -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
@@ -652,6 +576,19 @@
             sidebarOverlay.classList.remove('show');
             console.log('Mobile sidebar initialized as hidden');
         }
+
+        // Session Keep-Alive to prevent 419 Page Expired
+        setInterval(function() {
+            fetch('/keepalive', {
+                method: 'GET',
+                credentials: 'same-origin'
+            }).then(response => {
+                if (!response.ok) {
+                    throw new Error('Keepalive response not ok: ' + response.status);
+                }
+                console.log('Session keepalive successful');
+            }).catch(error => console.error('Keepalive failed', error));
+        }, 300000); // Refresh every 5 minutes
     });
 </script>
 

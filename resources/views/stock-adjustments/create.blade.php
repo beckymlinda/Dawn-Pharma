@@ -94,8 +94,12 @@
 
                             <div class="col-lg-6 col-md-12 mb-3">
                                 <label class="form-label fw-semibold">Reason <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" name="reason" 
-                                       placeholder="e.g., Damaged goods, Return, Manual count correction" required>
+                                <select class="form-select" name="reason" required>
+                                    <option value="new_stock" @selected(old('reason', 'new_stock') === 'new_stock')>New Stock</option>
+                                    <option value="damaged" @selected(old('reason') === 'damaged')>Damaged</option>
+                                    <option value="expired" @selected(old('reason') === 'expired')>Expired</option>
+                                    <option value="customer_return" @selected(old('reason') === 'customer_return')>Customer Return</option>
+                                </select>
                                 @error('reason')
                                     <div class="invalid-feedback d-block">{{ $message }}</div>
                                 @enderror
@@ -162,6 +166,7 @@
 <script>
 // Product data from server
 const products = @json($products);
+const preselectedProductId = @json($selectedProductId ?? null);
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded, initializing integrated search dropdown');
@@ -261,6 +266,14 @@ document.addEventListener('DOMContentLoaded', function() {
             productDropdown.style.display = 'none';
         }
     });
+
+    // Auto-select a product if the page opened with a preselected product ID
+    if (preselectedProductId) {
+        const matchingProduct = products.find(p => p.id === parseInt(preselectedProductId));
+        if (matchingProduct) {
+            selectProduct(matchingProduct);
+        }
+    }
     
     // Validate on form submission
     const form = document.querySelector('form');

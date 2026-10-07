@@ -9,7 +9,9 @@ window.POSPayments = window.POSPayments || {};
 // Payments State
 POSPayments.state = {
     paymentMethods: [],
-    receiptContent: null
+    receiptContent: null,
+    amountGiven: 0,
+    changeAmount: 0
 };
 
 // Payments Initialization
@@ -95,46 +97,147 @@ POSPayments.setupPaymentModal = function() {
         `;
     }
     
+    // Reset custom fields and state
+    POSPayments.state.amountGiven = 0;
+    POSPayments.state.changeAmount = 0;
+    
+    const amountGivenElement = document.getElementById('amountGiven');
+    const changeAmountElement = document.getElementById('changeAmount');
+    const paymentNotesElement = document.getElementById('paymentNotes');
+    
+    if (amountGivenElement) amountGivenElement.value = '';
+    if (changeAmountElement) changeAmountElement.textContent = '0.00';
+    if (paymentNotesElement) paymentNotesElement.value = '';
+    
     POSPayments.updatePaymentSummary();
 };
 
 /**
  * Update payment summary calculations
  */
-POSPayments.updatePaymentSummary = function() {
+POSPayments.getPaymentTotals = function() {
     const totalPayableElement = document.getElementById('totalPayable');
-    const totalPaidElement = document.getElementById('totalPaid');
-    const remainingBalanceElement = document.getElementById('remainingBalance');
-    
-    if (!totalPayableElement) {
-        console.log('Total payable element not found');
-        return true;
-    }
-    
-    const totalPayable = parseFloat(totalPayableElement.textContent.replace('MWK ', '').replace(',', '')) || 0;
+    const totalPayable = totalPayableElement ? parseFloat(totalPayableElement.textContent.replace('MWK ', '').replace(/,/g, '')) || 0 : 0;
     let totalPaid = 0;
-    
+
     document.querySelectorAll('.payment-amount').forEach(function(input) {
         totalPaid += parseFloat(input.value) || 0;
     });
-    
-    const remainingBalance = totalPayable - totalPaid;
-    
-    if (totalPaidElement) totalPaidElement.textContent = POSApp.utils.formatCurrency(totalPaid);
-    if (remainingBalanceElement) remainingBalanceElement.textContent = POSApp.utils.formatCurrency(remainingBalance);
-    
-    const addPaymentBtn = document.getElementById('addPaymentMethodBtn');
-    if (addPaymentBtn) {
-        addPaymentBtn.style.display = remainingBalance > 0 ? 'block' : 'none';
+
+    return { totalPayable, totalPaid };
+};
+
+POSPayments.hasValidPaymentMethod = function() {
+    let validMethod = false;
+
+    document.querySelectorAll('.payment-method-item').forEach(function(item) {
+        const methodSelect = item.querySelector('.payment-method-select');
+        const amountInput = item.querySelector('.payment-amount');
+        const methodValue = methodSelect ? methodSelect.value.trim() : '';
+        const amountValue = amountInput ? parseFloat(amountInput.value) || 0 : 0;
+
+        if (methodValue && amountValue > 0) {
+            validMethod = true;
+        }
+    });
+
+    // If no explicit payment method entered but user typed an amount in "Amount Given", treat it as valid cash
+    if (!validMethod) {
+        const amountGivenElement = document.getElementById('amountGiven');
+        const amountGiven = amountGivenElement ? parseFloat(amountGivenElement.value) || 0 : 0;
+        if (amountGiven > 0) validMethod = true;
     }
-    
-    const finalizeBtn = document.getElementById('finalizePaymentBtn');
+
+    return validMethod;
+};
+
+POSPayments.updatePaymentSummary = function() {
+    const totals = POSPayments.getPaymentTotals();
+    const totalPayable = totals.totalPayable;
+    let totalPaid = totals.totalPaid;
+    const totalPaidElement = document.getElementById('totalPaid');
+    const remainingBalanceElement = document.getElementById('remainingBalance');
+    const amountGivenElement = document.getElementById('amountGiven');
+    const changeAmountElement = document.getElementById('changeAmount');
+    const balanceAlert = document.getElementById('balanceAlert');
+    const totalPaidAlert = document.getElementById('totalPaidAlert');
+    const requiredAmountAlert = document.getElementById('requiredAmountAlert');
+    const finalizeBtn = document.querySelector('#paymentModal [onclick="finalizePayment()"]');
+
+    if (!document.getElementById('totalPayable')) {
+        console.log('Total payable element not found');
+        return false;
+    }
+
+    const amountGiven = amountGivenElement ? parseFloat(amountGivenElement.value) || 0 : 0;
+
+    // Detect explicit cash method amount
+    let cashMethodAmount = 0;
+    document.querySelectorAll('.payment-method-item').forEach(function(item) {
+        const methodSelect = item.querySelector('.payment-method-select');
+        const amountInput = item.querySelector('.payment-amount');
+        const method = methodSelect ? (methodSelect.value || '').toLowerCase() : '';
+        const amt = amountInput ? parseFloat(amountInput.value) || 0 : 0;
+        if (method === 'cash' && amt > 0) cashMethodAmount += amt;
+    });
+
+    // When user types an Amount Given, prefer that as the cash tender; otherwise use cashMethodAmount.
+    // This ensures typing into Amount Given dynamically affects Remaining Balance even when a cash method is prefilled.
+    const sumOtherMethods = totalPaid - cashMethodAmount;
+    const cashAmountUsed = amountGiven > 0 ? amountGiven : cashMethodAmount;
+    const totalPaidIncludingAmountGiven = sumOtherMethods + cashAmountUsed;
+    const remainingBalance = Math.max(0, totalPayable - totalPaidIncludingAmountGiven);
+    const changeValue = Math.max(0, amountGiven - totalPayable);
+
+    if (totalPaidElement) {
+        totalPaidElement.textContent = POSApp.utils.formatCurrency(totalPaidIncludingAmountGiven);
+    }
+    if (remainingBalanceElement) {
+        remainingBalanceElement.textContent = POSApp.utils.formatCurrency(remainingBalance);
+    }
+
+    if (changeAmountElement) {
+        changeAmountElement.textContent = changeValue.toFixed(2);
+        changeAmountElement.style.color = '#0d6efd';
+    }
+
+    // Update state so receipt generation uses the most recent values
+    POSPayments.state.amountGiven = amountGiven;
+    POSPayments.state.changeAmount = changeValue;
+
+    if (balanceAlert) {
+        if (totalPaidIncludingAmountGiven < totalPayable) {
+            balanceAlert.style.display = 'block';
+            if (totalPaidAlert) {
+                totalPaidAlert.textContent = POSApp.utils.formatCurrency(totalPaidIncludingAmountGiven).replace('MWK ', '');
+            }
+            if (requiredAmountAlert) {
+                requiredAmountAlert.textContent = POSApp.utils.formatCurrency(totalPayable).replace('MWK ', '');
+            }
+        } else {
+            balanceAlert.style.display = 'none';
+        }
+    }
+
+    const hasPaymentMethod = POSPayments.hasValidPaymentMethod();
+    const isPaymentSufficient = totalPaidIncludingAmountGiven >= totalPayable;
+    const canFinalize = isPaymentSufficient && hasPaymentMethod;
+
     if (finalizeBtn) {
-        finalizeBtn.disabled = remainingBalance > 0;
+        finalizeBtn.disabled = !canFinalize;
     }
-    
-    console.log('Payment summary updated - Total:', totalPayable.toFixed(2), 'Paid:', totalPaid.toFixed(2), 'Remaining:', remainingBalance.toFixed(2));
-    
+
+    console.log(
+        'Payment summary updated - Total:', totalPayable.toFixed(2),
+        'Paid (methods):', totalPaid.toFixed(2),
+        'Amount Given:', amountGiven.toFixed(2),
+        'Total Paid (including given):', totalPaidIncludingAmountGiven.toFixed(2),
+        'Remaining:', remainingBalance.toFixed(2),
+        'Change:', changeValue.toFixed(2),
+        'ValidMethod:', hasPaymentMethod,
+        'Finalizable:', canFinalize
+    );
+
     return true;
 };
 
@@ -214,19 +317,67 @@ POSPayments.finalizePayment = function() {
     console.log('Finalizing payment...');
     
     try {
-        const notes = document.getElementById('paymentNotes').value;
+        if (!POSPayments.updatePaymentSummary()) {
+            return false;
+        }
+
+        const notesElement = document.getElementById('paymentNotes');
+        const notes = notesElement ? notesElement.value : '';
         const totalPayableElement = document.getElementById('totalPayable');
+        const balanceAlert = document.getElementById('balanceAlert');
+        const totalPaidAlert = document.getElementById('totalPaidAlert');
+        const requiredAmountAlert = document.getElementById('requiredAmountAlert');
+
         if (!totalPayableElement) {
             alert('Error: Total amount not found');
-            return;
+            return false;
         }
-        
-        const totalPayable = parseFloat(totalPayableElement.textContent.replace('MWK ', '').replace(',', ''));
-        
-        if (!POSPayments.updatePaymentSummary()) {
-            return;
+
+        const totalPayable = parseFloat(totalPayableElement.textContent.replace('MWK ', '').replace(/,/g, '')) || 0;
+        let totalPaid = 0;
+        document.querySelectorAll('.payment-amount').forEach(function(input) {
+            totalPaid += parseFloat(input.value) || 0;
+        });
+
+        // Detect explicit cash method amount to avoid double-count
+        let cashMethodAmount = 0;
+        document.querySelectorAll('.payment-method-item').forEach(function(item) {
+            const methodSelect = item.querySelector('.payment-method-select');
+            const amountInput = item.querySelector('.payment-amount');
+            const method = methodSelect ? (methodSelect.value || '').toLowerCase() : '';
+            const amt = amountInput ? parseFloat(amountInput.value) || 0 : 0;
+            if (method === 'cash' && amt > 0) cashMethodAmount += amt;
+        });
+
+        const amountGivenElement = document.getElementById('amountGiven');
+        const amountGiven = amountGivenElement ? parseFloat(amountGivenElement.value) || 0 : 0;
+
+        const sumOtherMethods = totalPaid - cashMethodAmount;
+        const cashAmountUsed = amountGiven > 0 ? amountGiven : cashMethodAmount;
+        const totalPaidIncludingAmountGiven = sumOtherMethods + cashAmountUsed;
+        const paymentShortage = totalPayable - totalPaidIncludingAmountGiven;
+
+        const hasPaymentMethod = POSPayments.hasValidPaymentMethod();
+
+        if (!hasPaymentMethod) {
+            alert('Please select at least one payment method and enter an amount before completing payment.');
+            return false;
         }
-        
+
+        if (paymentShortage > 0) {
+            if (balanceAlert) {
+                balanceAlert.style.display = 'block';
+            }
+            if (totalPaidAlert) {
+                totalPaidAlert.textContent = POSApp.utils.formatCurrency(totalPaidIncludingAmountGiven).replace('MWK ', '');
+            }
+            if (requiredAmountAlert) {
+                requiredAmountAlert.textContent = POSApp.utils.formatCurrency(totalPayable).replace('MWK ', '');
+            }
+            alert('Payment incomplete. Remaining balance: MWK ' + paymentShortage.toFixed(2));
+            return false;
+        }
+
         const paymentData = {
             invoice_no: 'INV-' + Date.now(),
             customer_name: 'Walk-In Customer',
@@ -261,7 +412,8 @@ POSPayments.finalizePayment = function() {
             customer_name: paymentData.customer_name,
             contact_number: paymentData.contact_number,
             payment_status: paymentData.payment_status,
-            notes: paymentData.notes
+            notes: paymentData.notes,
+            items: window.POSCart ? window.POSCart.state.items : []
         };
         
         if (isSplitPayment) {
@@ -279,8 +431,10 @@ POSPayments.finalizePayment = function() {
         
         fetch(POSApp.config.apiEndpoints.finalize, {
             method: 'POST',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json',
+                'Accept': 'application/json',
                 'X-CSRF-TOKEN': csrfToken,
                 'X-Requested-With': 'XMLHttpRequest'
             },
@@ -301,47 +455,31 @@ POSPayments.finalizePayment = function() {
             if (data.success) {
                 console.log('Sale saved successfully:', data);
                 
-                // Generate receipt BEFORE clearing cart (so cart items are available)
+                // Generate receipt and PRINT IMMEDIATELY (before any cleanup)
                 POSPayments.generateReceipt(paymentData);
+                POSPayments.showReceiptAndPrint();
                 
-                // Clear cart immediately if backend indicates it was cleared
-                if (data.clear_cart && window.POSCart) {
-                    console.log('🧹 Clearing cart immediately after successful sale...');
-                    window.POSCart.state.items = [];
-                    window.POSCart.renderCart();
-                    
-                    // Also call backend clear as failsafe
-                    fetch(POSApp.config.apiEndpoints.cartClear, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': POSApp.utils.getCsrfToken(),
-                            'X-Requested-With': 'XMLHttpRequest'
-                        }
-                    }).catch(function(error) {
-                        console.error('Failsafe cart clear failed:', error);
-                    });
-                }
-                
-                // Close payment modal
+                // Now do cleanup after print dialog is open
                 POSApp.modal.hide('paymentModal');
                 
-                // Create direct browser print window with receipt
-                POSPayments.printReceiptDirectly();
+                // Open cash drawer if there is change
+                if (POSPayments.state.changeAmount > 0) {
+                    POSPayments.openCashDrawer();
+                }
                 
-                // Clear cart after printing (backup)
+                // Clear cart locally
+                if (data.clear_cart && window.POSCart) {
+                    window.POSCart.state.items = [];
+                    window.POSCart.renderCart();
+                    localStorage.removeItem('pos_local_cart');
+                }
                 if (window.POSCart) {
                     window.POSCart.clearCartAfterPayment();
                 }
                 
-                // Refresh product data immediately after sale
-                console.log('About to refresh product data after successful sale...');
+                // Refresh products in background
                 if (window.POSProducts) {
-                    window.POSProducts.refreshProductData().then(function(success) {
-                        console.log('Product data refresh result:', success);
-                    }).catch(function(error) {
-                        console.error('Product data refresh error:', error);
-                    });
+                    window.POSProducts.refreshProductData().catch(function(e) {});
                 }
                 
             } else {
@@ -383,86 +521,113 @@ POSPayments.generateReceipt = function(paymentData) {
     const dateStr = POSApp.utils.formatDate();
     
     let receiptContent = '';
-    receiptContent += '<div style="width: 90%; max-width: 90%; font-family: \'Courier New\', monospace; font-size: 14px; margin: 0 auto; padding: 15px; line-height: 1.4; font-weight: bold;">';
+    receiptContent += '<div style="width: 100%; font-family: monospace; font-size: 14px; margin: 0; padding: 0; line-height: 1.4; color: #000;">';
     
+    const systemName = (window.systemSettings && window.systemSettings.system_name) ? window.systemSettings.system_name : 'CNC HEALTH CARE';
+    const location = (window.systemSettings && window.systemSettings.location) ? window.systemSettings.location : 'Gateway Mall | Shop no. 9';
+    const telephone = (window.systemSettings && window.systemSettings.telephone) ? window.systemSettings.telephone : '0990575139';
+
     // Header
-    receiptContent += '<div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px;">';
-    receiptContent += '<h1 style="margin: 0; font-size: 20px; font-weight: bold;">EDUC PHARMACY</h1>';
-    receiptContent += '<div style="font-size: 12px; margin: 5px 0;">Area 47, Lilongwe, Malawi</div>';
-    receiptContent += '<div style="font-size: 12px; margin: 5px 0;">+265 999672775</div>';
+    receiptContent += '<div style="text-align: center; margin-bottom: 15px; pt-1">';
+    receiptContent += '<h1 style="margin: 0; font-size: 22px; font-weight: bold; text-transform: uppercase;">' + systemName + '</h1>';
+    receiptContent += '<div style="font-size: 14px; margin: 4px 0;">' + location + '</div>';
+    receiptContent += '<div style="font-size: 14px; margin: 4px 0;">Tel: ' + telephone + '</div>';
     receiptContent += '</div>';
     
-    // Customer and Date
-    receiptContent += '<div style="margin-bottom: 15px; font-size: 12px;">';
-    receiptContent += '<div style="margin: 5px 0;"><strong>Customer:</strong> Walk-In Customer</div>';
-    receiptContent += '<div style="margin: 5px 0;"><strong>Date:</strong> ' + dateStr + '</div>';
-    receiptContent += '<div style="margin: 5px 0;"><strong>Invoice:</strong> ' + (paymentData.invoice_no || 'N/A') + '</div>';
+    // Top Thick Border
+    receiptContent += '<div style="border-top: 2px solid #000; margin-bottom: 10px;"></div>';
+    
+    // Date and Invoice
+    receiptContent += '<div style="margin-bottom: 10px; font-size: 10px;">';
+    receiptContent += '<div style="margin: 2px 0;"><strong>Customer:</strong> ' + (paymentData.customer_name || 'Walk-In Customer') + '</div>';
+    receiptContent += '<div style="margin: 2px 0;"><strong>Date:</strong> ' + dateStr + '</div>';
+    receiptContent += '<div style="margin: 2px 0;"><strong>Invoice:</strong> ' + (paymentData.invoice_no || 'N/A') + '</div>';
     receiptContent += '</div>';
     
     // Items Header
-    receiptContent += '<div style="margin-bottom: 10px; border-top: 1px dashed #000; padding-top: 10px;">';
-    receiptContent += '<div style="display: flex; font-size: 12px; font-weight: bold; margin-bottom: 5px; border-bottom: 1px solid #000; padding-bottom: 3px;">';
-    receiptContent += '<div style="flex: 3;">ITEM</div>';
-    receiptContent += '<div style="flex: 1; text-align: center;">QTY</div>';
-    receiptContent += '<div style="flex: 1; text-align: right;">PRICE</div>';
-    receiptContent += '<div style="flex: 1; text-align: right;">TOTAL</div>';
-    receiptContent += '</div>';
+    receiptContent += '<table style="width: 100%; border-collapse: collapse; font-size: 9px; margin-bottom: 5px;">';
+    receiptContent += '<thead>';
+    receiptContent += '<tr style="border-top: 1px dashed #000; border-bottom: 1px dashed #000;">';
+    receiptContent += '<th style="text-align: left; padding: 8px 0; text-transform: uppercase;">ITEM</th>';
+    receiptContent += '<th style="text-align: center; padding: 8px 0; text-transform: uppercase;">QTY</th>';
+    receiptContent += '<th style="text-align: right; padding: 8px 0; text-transform: uppercase;">PRICE</th>';
+    receiptContent += '<th style="text-align: right; padding: 8px 0; text-transform: uppercase;">TOTAL</th>';
+    receiptContent += '</tr>';
+    receiptContent += '</thead>';
+    receiptContent += '<tbody>';
     
     // Items
     for (let i = 0; i < window.POSCart.state.items.length; i++) {
         const item = window.POSCart.state.items[i];
         const itemName = item.name || 'Unknown Product';
-        const itemPrice = parseFloat(item.price) || 0;
+        const itemPrice = parseFloat(item.price) || parseFloat(item.selling_price) || 0;
         const itemQty = item.quantity || 1;
         const itemTotal = itemPrice * itemQty;
         
-        receiptContent += '<div style="display: flex; font-size: 11px; margin-bottom: 3px; padding: 2px 0;">';
-        receiptContent += '<div style="flex: 3; font-weight: 500;">' + itemName + '</div>';
-        receiptContent += '<div style="flex: 1; text-align: center; font-weight: bold;">' + itemQty + '</div>';
-        receiptContent += '<div style="flex: 1; text-align: right;">' + itemPrice.toFixed(2) + '</div>';
-        receiptContent += '<div style="flex: 1; text-align: right; font-weight: bold;">' + itemTotal.toFixed(2) + '</div>';
-        receiptContent += '</div>';
+        receiptContent += '<tr>';
+        receiptContent += '<td style="text-align: left; padding: 3px 0; color: #333;">' + itemName + '</td>';
+        receiptContent += '<td style="text-align: center; padding: 3px 0;">' + itemQty + '</td>';
+        receiptContent += '<td style="text-align: right; padding: 3px 0;">' + itemPrice.toFixed(2) + '</td>';
+        receiptContent += '<td style="text-align: right; padding: 3px 0;">' + itemTotal.toFixed(2) + '</td>';
+        receiptContent += '</tr>';
     }
     
-    receiptContent += '</div>';
+    receiptContent += '</tbody></table>';
     
     // Summary
-    receiptContent += '<div style="margin-top: 15px; border-top: 1px dashed #000; padding-top: 10px;">';
-    receiptContent += '<div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; margin-bottom: 5px;">';
-    receiptContent += '<div>SUBTOTAL:</div>';
-    receiptContent += '<div>' + POSApp.utils.formatCurrency(totalAmount) + '</div>';
+    receiptContent += '<div style="border-top: 1px dashed #000; margin-top: 5px; margin-bottom: 10px;"></div>';
+    
+    receiptContent += '<div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: bold; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 5px;">';
+    receiptContent += '<span>SUBTOTAL:</span>';
+    receiptContent += '<span>MWK ' + totalAmount.toFixed(2) + '</span>';
     receiptContent += '</div>';
     
     // Payment details
-    receiptContent += '<div style="margin-top: 10px; border-top: 1px solid #000; padding-top: 8px;">';
     for (let j = 0; j < paymentData.payments.length; j++) {
         const payment = paymentData.payments[j];
-        const paymentMethod = payment.method.charAt(0).toUpperCase() + payment.method.slice(1).replace('_', ' ');
+        const paymentMethod = payment.method.toUpperCase().replace('_', ' ');
         
-        receiptContent += '<div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 3px;">';
-        receiptContent += '<div>' + paymentMethod + ':</div>';
-        receiptContent += '<div>' + POSApp.utils.formatCurrency(payment.amount) + '</div>';
+        receiptContent += '<div style="display: flex; justify-content: space-between; font-size: 10px; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 4px;">';
+        receiptContent += '<span>' + paymentMethod + ':</span>';
+        receiptContent += '<span>MWK ' + payment.amount.toFixed(2) + '</span>';
         receiptContent += '</div>';
     }
     
-    receiptContent += '<div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; margin: 8px 0; border-top: 1px solid #000; padding-top: 5px;">';
-    receiptContent += '<div>TOTAL PAID:</div>';
-    receiptContent += '<div>' + POSApp.utils.formatCurrency(totalAmount) + '</div>';
+    // Determine amount given and change robustly from DOM and paymentData
+    const totalPaid = paymentData.payments.reduce((acc, p) => acc + p.amount, 0);
+    const amountGivenElement = document.getElementById('amountGiven');
+    const domAmountGiven = amountGivenElement ? parseFloat(amountGivenElement.value) || 0 : 0;
+    // Prefer explicit DOM amountGiven when present, otherwise use state or payment totals
+    const amountGiven = domAmountGiven > 0 ? domAmountGiven : (POSPayments.state.amountGiven || totalPaid);
+    const changeAmount = Math.max(0, amountGiven - totalAmount);
+
+    // Persist to state so other flows (drawer open, printing) use same values
+    POSPayments.state.amountGiven = amountGiven;
+    POSPayments.state.changeAmount = changeAmount;
+
+    receiptContent += '<div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; margin-top: 5px;">';
+    receiptContent += '<span>TOTAL PAYABLE:</span>';
+    receiptContent += '<span>MWK ' + totalAmount.toFixed(2) + '</span>';
+    receiptContent += '</div>';
+
+    receiptContent += '<div style="display: flex; justify-content: space-between; font-size: 11px; margin-top: 4px;">';
+    receiptContent += '<span>AMOUNT GIVEN:</span>';
+    receiptContent += '<span>MWK ' + amountGiven.toFixed(2) + '</span>';
     receiptContent += '</div>';
     
-    receiptContent += '<div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 3px;">';
-    receiptContent += '<div>CHANGE:</div>';
-    receiptContent += '<div>' + POSApp.utils.formatCurrency(0) + '</div>';
-    receiptContent += '</div>';
-    
+    receiptContent += '<div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; margin-top: 4px; border-top: 1px solid #000; padding-top: 2px;">';
+    receiptContent += '<span>CHANGE:</span>';
+    receiptContent += '<span>MWK ' + changeAmount.toFixed(2) + '</span>';
     receiptContent += '</div>';
     
     // Footer
-    receiptContent += '<div style="margin-top: 20px; border-top: 1px dashed #000; padding-top: 15px; text-align: center;">';
-    receiptContent += '<div style="font-size: 13px; font-style: italic; margin-bottom: 5px;">Thank you for your purchase!</div>';
-    receiptContent += '<div style="font-size: 11px;">Please come again</div>';
-    receiptContent += '<div style="font-size: 10px; margin-top: 8px;">Powered by EDUC Consultancy</div>';
+    receiptContent += '<div style="border-top: 1px dashed #000; margin: 10px 0;"></div>';
+    receiptContent += '<div style="text-align: center; margin-top: 5px;">';
+    receiptContent += '<div style="font-size: 12px; font-style: italic; margin-bottom: 3px;">Thank you for your purchase!</div>';
+    receiptContent += '<div style="font-size: 10px;">Powered by EDUC Consultancy</div>';
     receiptContent += '</div>';
+    
+    receiptContent += '<div style="border-bottom: 2px solid #000; margin-top: 10px;"></div>';
     
     receiptContent += '</div>';
     
@@ -471,123 +636,97 @@ POSPayments.generateReceipt = function(paymentData) {
 };
 
 /**
- * Print receipt directly (NON-BLOCKING version)
+ * Open browser print dialog directly (no visible window)
  */
-POSPayments.printReceiptDirectly = function() {
-    console.log('=== PRINT RECEIPT DIRECTLY (NON-BLOCKING) ===');
+POSPayments.showReceiptAndPrint = function() {
+    if (!POSPayments.state.receiptContent) return;
 
-    if (!POSPayments.state.receiptContent) {
-        console.error('ERROR: No receipt content available!');
-        alert('Error: No receipt content to print');
-        return;
-    }
+    // Remove any previous print frame
+    var oldFrame = document.getElementById('receiptPrintFrame');
+    if (oldFrame) oldFrame.remove();
 
-    const content = POSPayments.state.receiptContent;
-    console.log('Content length:', content.length);
+    // Create hidden iframe
+    var iframe = document.createElement('iframe');
+    iframe.id = 'receiptPrintFrame';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
 
-    try {
-        // Create a hidden iframe for printing (non-blocking)
-        const printFrame = document.createElement('iframe');
-        printFrame.style.display = 'none';
-        printFrame.style.position = 'absolute';
-        printFrame.style.left = '-9999px';
-        document.body.appendChild(printFrame);
+    var doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write('<!DOCTYPE html><html><head><title>Receipt</title>');
+    doc.write('<style>');
+    doc.write('body { font-family: monospace; margin: 0; padding: 15px 25px 15px 10px; font-size: 10px; line-height: 1.4; color: #000; width: 260px; }');
+    doc.write('img { filter: grayscale(1) contrast(1.2); }');
+    doc.write('@media print { body { margin: 0; padding: 15px 20px 15px 10px; width: 90%; } img { filter: grayscale(1) contrast(1.2); } }');
+    doc.write('</style></head><body>');
+    doc.write(POSPayments.state.receiptContent);
+    doc.write('</body></html>');
+    doc.close();
 
-        const printWindow = printFrame.contentWindow;
-        let html = '<!DOCTYPE html><html><head><title>Receipt</title>';
-        html += '<style>';
-        html += 'body { font-family: monospace; margin: 10px; padding: 0; font-size: 14px; line-height: 1.3; }';
-        html += '.receipt-header { text-align: center; margin-bottom: 12px; border-bottom: 2px solid #000; padding-bottom: 6px; }';
-        html += '.receipt-footer { text-align: center; margin-top: 12px; border-top: 1px dashed #000; padding-top: 10px; }';
-        html += '@media print { body { margin: 5px; font-size: 13px; } .no-print { display: none; }';
-        html += '</style></head><body>';
-        html += content;
-        html += '</body></html>';
-
-        printWindow.document.write(html);
-        printWindow.document.close();
-
-        // Print without blocking the main thread
-        setTimeout(function() {
-            try {
-                printWindow.print();
-                console.log('Print command sent to browser');
-
-                // Clean up after printing
-                setTimeout(function() {
-                    document.body.removeChild(printFrame);
-                    console.log('Print iframe cleaned up');
-                }, 2000);
-
-            } catch (printError) {
-                console.error('Print error:', printError);
-                document.body.removeChild(printFrame);
-            }
-        }, 100);
-
-    } catch (error) {
-        console.error('ERROR in direct print function:', error);
-        alert('Error preparing receipt for printing: ' + error.message);
-    }
+    // Print immediately
+    iframe.contentWindow.focus();
+    iframe.contentWindow.print();
 };
 
 /**
- * Print receipt from modal
+ * Print receipt (used by manual Print button)
  */
 POSPayments.printReceipt = function() {
-    console.log('=== PRINT RECEIPT FROM MODAL ===');
+    POSPayments.showReceiptAndPrint();
+};
+
+/**
+ * Open cash drawer
+ * This function attempts to open a USB cash drawer.
+ * Many USB drawers act as a Virtual COM port. Sending any character (e.g. ASCII 7) triggers it.
+ */
+POSPayments.openCashDrawer = async function() {
+    console.log('=== OPENING CASH DRAWER ===');
     
-    const receiptPrintArea = document.getElementById('receipt-print-area');
-    if (!receiptPrintArea) {
-        console.error('ERROR: Receipt print area not found');
-        alert('Error: Receipt content not found');
-        return;
-    }
-    
-    const content = receiptPrintArea.innerHTML;
-    if (!content || content.trim() === '') {
-        console.error('ERROR: No receipt content to print');
-        alert('Error: No receipt content to print');
-        return;
-    }
-    
-    console.log('Printing receipt content, length:', content.length);
-    
-    // Create a print window
-    const printWindow = window.open('', '_blank', 'width=600,height=800,scrollbars=yes,resizable=yes');
-    
-    if (!printWindow) {
-        console.error('ERROR: Print window blocked by browser');
-        alert('Print window was blocked. Please allow popups for this site.');
-        return;
-    }
-    
-    try {
-        let html = '<!DOCTYPE html><html><head><title>Receipt</title>';
-        html += '<style>';
-        html += 'body { font-family: monospace; margin: 10px; padding: 0; font-size: 14px; line-height: 1.3; }';
-        html += '.receipt-header { text-align: center; margin-bottom: 12px; border-bottom: 2px solid #000; padding-bottom: 6px; }';
-        html += '.receipt-footer { text-align: center; margin-top: 12px; border-top: 1px dashed #000; padding-top: 10px; }';
-        html += '@media print { body { margin: 5px; font-size: 13px; } .no-print { display: none; } }';
-        html += '</style></head><body>';
-        html += content;
-        html += '</body></html>';
-        
-        printWindow.document.write(html);
-        printWindow.document.close();
-        printWindow.focus();
-        
-        // Auto print and close after a delay
-        setTimeout(function() {
-            printWindow.print();
-            setTimeout(function() {
-                printWindow.close();
-            }, 1000);
-        }, 500);
-        
-    } catch (error) {
-        console.error('ERROR in print function:', error);
-        alert('Error preparing receipt for printing: ' + error.message);
+    // Method 1: Web Serial API (Modern browsers)
+    if ('serial' in navigator) {
+        try {
+            // First, check if we already have permission for a port
+            const ports = await navigator.serial.getPorts();
+            let port = ports[0];
+            
+            if (!port) {
+                console.log('No authorized serial ports found. Requesting permission...');
+                // Note: requestPort must be triggered by a user gesture. 
+                // Since this is called after a button click (finalizePayment), it might work.
+                // But some browsers might be strict.
+                try {
+                    port = await navigator.serial.requestPort();
+                } catch (e) {
+                    console.warn('User cancelled port selection or browser blocked it:', e);
+                    return;
+                }
+            }
+            
+            if (port) {
+                await port.open({ baudRate: 9600 });
+                const writer = port.writable.getWriter();
+                
+                // Common pulse commands for cash drawers:
+                // ASCII 7 (Bell), or ESC p 0 25 250 (\x1b\x70\x00\x19\xfa) for Epson/Star
+                const data = new Uint8Array([7, 27, 112, 0, 25, 250]); 
+                await writer.write(data);
+                
+                writer.releaseLock();
+                await port.close();
+                console.log('Cash drawer trigger command sent successfully');
+            }
+        } catch (err) {
+            console.error('Error with Web Serial drawer trigger:', err);
+            // Fallback: If it's a printer-connected drawer, the receipt print job might handle it
+        }
+    } else {
+        console.warn('Web Serial API not supported. Please use a modern browser (Chrome/Edge).');
     }
 };
 
@@ -601,6 +740,16 @@ POSPayments.clearCartAfterPayment = function() {
         // Clear cart state
         window.POSCart.state.items = [];
         window.POSCart.state.justPaid = false;
+        
+        // Reset payment state
+        POSPayments.state.amountGiven = 0;
+        POSPayments.state.changeAmount = 0;
+        
+        // Reset modal fields if they exist
+        const amountGivenElement = document.getElementById('amountGiven');
+        const changeAmountElement = document.getElementById('changeAmount');
+        if (amountGivenElement) amountGivenElement.value = '';
+        if (changeAmountElement) changeAmountElement.textContent = '0.00';
         
         // Re-render cart to show empty state
         window.POSCart.renderCart();

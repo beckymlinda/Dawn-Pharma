@@ -19,7 +19,10 @@ class Register extends Model
     ];
 
     protected $casts = [
-        'opened_at' => 'datetime',
+     
+    'user_id' => 'integer',
+     
+    'opened_at' => 'datetime',
         'closed_at' => 'datetime',
     ];
 

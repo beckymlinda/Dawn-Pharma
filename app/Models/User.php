@@ -75,11 +75,20 @@ class User extends Authenticatable
 
     public function hasPermission($permission): bool
     {
+        // First check if user has any role that is superadmin
+        foreach ($this->roles as $role) {
+            if ($role->is_superadmin) {
+                return true;
+            }
+        }
+
+        // Then check individual permissions through roles
         foreach ($this->roles as $role) {
             if ($role->hasPermission($permission)) {
                 return true;
             }
         }
+
         return false;
     }
 

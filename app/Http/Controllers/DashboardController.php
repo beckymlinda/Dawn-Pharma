@@ -16,10 +16,18 @@ class DashboardController extends Controller
         $today = Carbon::today();
         $thirtyDaysAgo = Carbon::today()->subDays(30);
         
-        // Calculate real statistics using existing columns
-        $totalSales = Sale::whereDate('created_at', $today)->sum('total_amount');
+        // Base queries for isolation
+        $saleQuery = Sale::query();
+        if (!auth()->user()->hasRole('admin') && !auth()->user()->hasRole('super_admin')) {
+            $saleQuery->whereHas('register', function($q) {
+                $q->where('user_id', auth()->id());
+            });
+        }
+
+        // Calculate real statistics using filtered query
+        $totalSales = (clone $saleQuery)->whereDate('created_at', $today)->sum('total_amount');
         $netSales = $totalSales; // You can modify this based on your business logic
-        $invoiceDue = Sale::where('payment_status', 'due')->whereDate('created_at', $today)->sum('sell_due');
+        $invoiceDue = (clone $saleQuery)->where('payment_status', 'due')->whereDate('created_at', $today)->sum('sell_due');
         $sellReturn = 0; // No return_type column, set to 0 for now
         $totalPurchase = Purchase::whereDate('purchase_date', $today)->sum('grand_total');
         $purchaseDue = Purchase::where('payment_status', 'due')->whereDate('purchase_date', $today)->sum('grand_total');
@@ -32,8 +40,8 @@ class DashboardController extends Controller
                             ->where('expiry_date', '>=', $today)
                             ->count();
         
-        // Get sales data for the last 30 days
-        $salesData = Sale::where('created_at', '>=', $thirtyDaysAgo)
+        // Get sales data for the last 30 days using isolated query
+        $salesData = (clone $saleQuery)->where('created_at', '>=', $thirtyDaysAgo)
             ->selectRaw('DATE(created_at) as date, SUM(total_amount) as total')
             ->groupBy('date')
             ->orderBy('date', 'asc')
@@ -52,6 +60,9 @@ class DashboardController extends Controller
             $data[] = $daySales ? $daySales->total : 0;
         }
         
+        // Calculate low stock items
+        $lowStockItems = Product::whereColumn('current_stock', '<=', 'alert_quantity')->count();
+        
         return view('pos.dashboard', compact(
             'totalSales',
             'netSales', 
@@ -62,6 +73,7 @@ class DashboardController extends Controller
             'purchaseReturn',
             'expense',
             'expiryItems',
+            'lowStockItems',
             'labels',
             'data'
         ));

@@ -65,12 +65,23 @@ class PaymentMethods
         $totals = self::initializeTotals();
         
         foreach ($sales as $sale) {
-            $method = strtolower($sale->payment_method);
-            
-            if (isset($totals[$method])) {
-                $totals[$method] += $sale->total_amount;
+            if ($sale->payment_method === 'split' && $sale->payments) {
+                foreach ($sale->payments as $payment) {
+                    $method = strtolower($payment->method);
+                    if (isset($totals[$method])) {
+                        $totals[$method] += $payment->amount;
+                    } else {
+                        $totals['other'] += $payment->amount;
+                    }
+                }
             } else {
-                $totals['other'] += $sale->total_amount;
+                $method = strtolower($sale->payment_method);
+                
+                if (isset($totals[$method])) {
+                    $totals[$method] += $sale->total_amount;
+                } else {
+                    $totals['other'] += $sale->total_amount;
+                }
             }
         }
         

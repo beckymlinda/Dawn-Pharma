@@ -7,11 +7,30 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h4 class="fw-bold">Stock Adjustments</h4>
         @can('create_stock_adjustment')
-            <a href="{{ route('stock-adjustments.create') }}" class="btn btn-primary">
-                <i class="bi bi-plus-lg me-1"></i> New Adjustment
-            </a>
+            <div class="d-flex gap-2">
+                <a href="{{ route('stock-adjustments.bulk') }}" class="btn btn-outline-primary">
+                    <i class="bi bi-cloud-upload me-1"></i> Bulk Upload
+                </a>
+                <a href="{{ route('stock-adjustments.create') }}" class="btn btn-primary">
+                    <i class="bi bi-plus-lg me-1"></i> New Adjustment
+                </a>
+            </div>
         @endcan
     </div>
+
+    @if (session('error_details'))
+        <div class="alert alert-warning border-0 shadow-sm mb-4">
+            <div class="d-flex align-items-center mb-2">
+                <i class="bi bi-exclamation-circle-fill me-2"></i>
+                <strong class="small">Some rows were not applied:</strong>
+            </div>
+            <ul class="mb-0 small ps-3">
+                @foreach (session('error_details') as $detail)
+                    <li>{{ $detail }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
 
     <!-- Search Bar -->
     <div class="row mb-3">
@@ -68,7 +87,7 @@
                                 <td>{{ \Carbon\Carbon::parse($adjustment->created_at)->format('M d, Y H:i') }}</td>
                                 <td>
                                     @if($adjustment->product)
-                                        <strong>{{ $adjustment->product->name }}</strong>
+                                        <strong>{{ $adjustment->product?->name ?? 'Deleted Product' }}</strong>
                                         <br>
                                         <small class="text-muted">SKU: {{ $adjustment->product->sku }}</small>
                                     @else

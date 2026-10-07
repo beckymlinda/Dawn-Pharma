@@ -57,7 +57,7 @@ class POSController extends Controller
         $categories = Category::orderBy('name')->get();
         $brands = Brand::orderBy('name')->get();
 
-        return view('pos.pos_new', compact('products', 'categories', 'brands', 'openRegister'));
+        return view('pos.pos', compact('products', 'categories', 'brands', 'openRegister'));
     }
 
     public function registerDetails()
@@ -76,21 +76,30 @@ class POSController extends Controller
         return view('pos.register_details', compact('register', 'registerData'));
     }
 
-    private function getRegisterDetailsData()
+    public function showRegister($id)
+    {
+        $register = \App\Models\Register::findOrFail($id);
+        $registerData = $this->getRegisterDetailsData($register);
+        return view('pos.register_details', compact('register', 'registerData'));
+    }
+
+    private function getRegisterDetailsData($register = null)
     {
         // Check if user has open register
-        $openRegister = RegisterController::getOpenRegister();
+        if (!$register) {
+            $register = RegisterController::getOpenRegister();
+        }
         
-        if (!$openRegister) {
+        if (!$register) {
             return [
                 'success' => false,
-                'error' => 'No open register. Please open a register first.'
+                'error' => 'No register found.'
             ];
         }
 
         try {
             // Get all sales for this register with their items and products
-            $sales = Sale::where('register_id', $openRegister->id)
+            $sales = Sale::where('register_id', $register->id)
                 ->with('items.product', 'items.product.brand')
                 ->orderBy('created_at', 'desc')
                 ->get();
@@ -161,14 +170,14 @@ class POSController extends Controller
             return [
                 'success' => true,
                 'register' => [
-                    'id' => $openRegister->id,
-                    'opened_at' => $openRegister->opened_at,
-                    'opening_cash' => $openRegister->opening_cash,
+                    'id' => $register->id,
+                    'opened_at' => $register->opened_at,
+                    'opening_cash' => $register->opening_cash,
                     'user' => [
-                        'name' => $openRegister->user->name,
-                        'email' => $openRegister->user->email
+                        'name' => $register->user->name ?? 'Unknown',
+                        'email' => $register->user->email ?? ''
                     ],
-                    'business_location' => $openRegister->business_location ?? 'N/A',
+                    'business_location' => $register->business_location ?? 'N/A',
                     'payment_methods' => $paymentMethods,
                     'totals' => [
                         'total_sales' => $totalSales,
@@ -261,7 +270,7 @@ class POSController extends Controller
         if ($product->current_stock == 0) {
             return response()->json([
                 'success' => false,
-                'error' => 'Product is out of stock. Please update stock before completing this transaction.'
+                'error' => 'Item out of stock'
             ], 400);
         }
 
@@ -303,6 +312,9 @@ class POSController extends Controller
 
             $cart[$existingIndex]['quantity'] = $newQuantity;
             $cart[$existingIndex]['subtotal'] = $cart[$existingIndex]['price'] * $newQuantity;
+            if (!isset($cart[$existingIndex]['purchase_price'])) {
+                $cart[$existingIndex]['purchase_price'] = $product->purchase_price;
+            }
         } else {
             // Add new item to cart at the end
             $newItem = [
@@ -311,6 +323,7 @@ class POSController extends Controller
                 'name' => $product->name,
                 'quantity' => $data['quantity'],
                 'price' => $product->selling_price,
+                'purchase_price' => $product->purchase_price,
                 'subtotal' => $data['quantity'] * $product->selling_price
             ];
             
@@ -350,6 +363,14 @@ class POSController extends Controller
     public function getCart(Request $request)
     {
         $cart = session()->get('pos_cart', []);
+        foreach ($cart as $index => $item) {
+            if (!isset($item['purchase_price']) && isset($item['product_id'])) {
+                $product = Product::find($item['product_id']);
+                $cart[$index]['purchase_price'] = $product ? $product->purchase_price : 0;
+            }
+        }
+        session()->put('pos_cart', $cart);
+
         $totalItems = collect($cart)->sum('quantity');
         $totalAmount = collect($cart)->sum('subtotal');
 
@@ -399,7 +420,7 @@ class POSController extends Controller
         if ($product->current_stock == 0) {
             return response()->json([
                 'success' => false,
-                'error' => 'Product is out of stock. Please update stock before completing this transaction.'
+                'error' => 'Item out of stock'
             ], 400);
         }
 
@@ -415,6 +436,13 @@ class POSController extends Controller
         $cart[$itemIndex]['subtotal'] = $cart[$itemIndex]['price'] * $data['quantity'];
         
         session()->put('pos_cart', $cart);
+
+        foreach ($cart as $index => $item) {
+            if (!isset($item['purchase_price']) && isset($item['product_id'])) {
+                $product = Product::find($item['product_id']);
+                $cart[$index]['purchase_price'] = $product ? $product->purchase_price : 0;
+            }
+        }
 
         return response()->json(['cart' => $cart, 'success' => true]);
     }
@@ -443,7 +471,26 @@ class POSController extends Controller
             ], 400);
         }
 
-        $cart = session()->get('pos_cart', []);
+        $cart = $request->input('items', []);
+        if (empty($cart)) {
+            $cart = session()->get('pos_cart', []);
+        }
+        
+        // Ensure each item has necessary fields like price and subtotal
+        foreach ($cart as $key => $item) {
+            if (isset($item['product_id'])) {
+                $product = Product::find($item['product_id']);
+                if ($product) {
+                    if (!isset($item['price'])) {
+                        $cart[$key]['price'] = $product->selling_price;
+                    }
+                    if (!isset($item['subtotal'])) {
+                        $cart[$key]['subtotal'] = ($cart[$key]['price'] ?? $product->selling_price) * $item['quantity'];
+                    }
+                }
+            }
+        }
+        
         if (empty($cart)) {
             DB::rollBack();
             return response()->json([
@@ -506,7 +553,6 @@ class POSController extends Controller
                 $totalAmount = collect($cart)->sum('subtotal');
                 $totalItems = collect($cart)->sum('quantity');
                 
-                // Validate main sale data (no payment_method required for split payments)
                 $validated = $request->validate([
                     'invoice_no' => 'required|string',
                     'customer_name' => 'nullable|string',
@@ -520,105 +566,86 @@ class POSController extends Controller
                 $createdSales = [];
                 $baseInvoiceNo = $validated['invoice_no'];
                 
-                // Create separate sale for each payment method
-                foreach ($paymentsData as $index => $paymentData) {
-                    $paymentMethod = $paymentData['method'];
-                    $paymentAmount = $paymentData['amount'];
-                    
-                    // Create unique invoice number for each payment
-                    $invoiceNo = $baseInvoiceNo . '-' . ($index + 1);
-                    
-                    // Create sale record for this payment method
-                    $sale = Sale::create([
-                        'register_id' => $openRegister->id,
-                        'invoice_no' => $invoiceNo,
-                        'customer_name' => $validated['customer_name'] ?? 'Walk-In Customer',
-                        'contact_number' => $validated['contact_number'] ?? null,
-                        'location' => 'POS Terminal',
-                        'payment_status' => $validated['payment_status'],
-                        'payment_method' => $paymentMethod,
-                        'total_amount' => $paymentAmount,
-                        'total_paid' => $paymentAmount,
-                        'sell_due' => 0,
-                        'total_items' => $totalItems,
-                    ]);
+                // Create single sale record for the split payment
+                $sale = Sale::create([
+                    'register_id' => $openRegister->id,
+                    'invoice_no' => $baseInvoiceNo,
+                    'customer_name' => $validated['customer_name'] ?? 'Walk-In Customer',
+                    'contact_number' => $validated['contact_number'] ?? null,
+                    'location' => 'POS Terminal',
+                    'payment_status' => $validated['payment_status'],
+                    'payment_method' => 'split',
+                    'total_amount' => $totalAmount,
+                    'total_paid' => collect($paymentsData)->sum('amount'),
+                    'sell_due' => 0,
+                    'total_items' => $totalItems,
+                ]);
 
-                    // Create POS record for tracking
-                    POS::create([
-                        'date' => now(),
-                        'invoice_no' => $invoiceNo,
-                        'customer_name' => $validated['customer_name'] ?? 'Walk-In Customer',
-                        'payment_status' => $validated['payment_status'],
-                        'payment_method' => $paymentMethod,
-                        'total_amount' => $paymentAmount,
-                        'total_paid' => $paymentAmount,
-                        'return_due' => 0,
-                        'shipping_status' => 'Completed',
-                        'total_items' => $totalItems,
-                    ]);
+                // Create POS record for tracking
+                POS::create([
+                    'date' => now(),
+                    'invoice_no' => $baseInvoiceNo,
+                    'customer_name' => $validated['customer_name'] ?? 'Walk-In Customer',
+                    'payment_status' => $validated['payment_status'],
+                    'payment_method' => 'split',
+                    'total_amount' => $totalAmount,
+                    'total_paid' => collect($paymentsData)->sum('amount'),
+                    'return_due' => 0,
+                    'shipping_status' => 'Completed',
+                    'total_items' => $totalItems,
+                ]);
 
-                    // Create payment record
+                // Create multiple payment records
+                foreach ($paymentsData as $paymentData) {
                     Payment::create([
                         'sale_id' => $sale->id,
-                        'method' => $paymentMethod,
-                        'amount' => $paymentAmount,
+                        'method' => $paymentData['method'],
+                        'amount' => $paymentData['amount'],
                     ]);
+                }
 
-                    // Create sale items and decrement stock (only for first payment to avoid double stock deduction)
-                    if ($index === 0) {
-                        foreach ($cart as $item) {
-                            $product = Product::find($item['product_id']);
-                            $purchaseCost = $product ? $product->purchase_price : 0;
-                            
-                            // Final stock validation before creating sale item
-                            if (!$product || $product->current_stock < $item['quantity']) {
-                                // Rollback all created sales
-                                foreach ($createdSales as $createdSale) {
-                                    $createdSale->delete();
-                                    Payment::where('sale_id', $createdSale->id)->delete();
-                                    POS::where('invoice_no', $createdSale->invoice_no)->delete();
-                                }
-                                
-                                return response()->json([
-                                    'success' => false,
-                                    'error' => 'Insufficient stock for product: ' . ($product->name ?? 'Unknown') . 
-                                             '. Available: ' . ($product ? $product->current_stock : 0) . 
-                                             ', Requested: ' . $item['quantity']
-                                ], 400);
-                            }
-                            
-                            SaleItem::create([
-                                'sale_id' => $sale->id,
-                                'product_id' => $item['product_id'],
-                                'quantity' => $item['quantity'],
-                                'price' => $item['price'],
-                                'subtotal' => $item['subtotal'],
-                                'purchase_cost' => $purchaseCost // Capture purchase cost at time of sale
-                            ]);
-
-                            // Decrement stock and create stock history
-                            $oldStock = $product->current_stock;
-                            $product->current_stock -= $item['quantity'];
-                            $product->save();
-                            
-                            // Create stock history record
-                            StockHistory::create([
-                                'product_id' => $product->id,
-                                'type' => 'Sale',
-                                'quantity_change' => -$item['quantity'], // Negative for outbound
-                                'new_quantity' => $product->current_stock,
-                                'unit_cost' => $purchaseCost,
-                                'unit_price' => $item['price'],
-                                'date' => now()->toDateString(),
-                                'reference_no' => $invoiceNo,
-                                'customer_supplier' => $validated['customer_name'] ?? 'Walk-In Customer',
-                                'notes' => 'Sold in invoice #' . $invoiceNo . ' (' . $paymentMethod . ')'
-                            ]);
-                        }
+                // Create sale items and decrement stock once
+                foreach ($cart as $item) {
+                    $product = Product::find($item['product_id']);
+                    $purchaseCost = $product ? $product->purchase_price : 0;
+                    
+                    if (!$product || $product->current_stock < $item['quantity']) {
+                        DB::rollBack();
+                        return response()->json([
+                            'success' => false,
+                            'error' => 'Insufficient stock for product: ' . ($product->name ?? 'Unknown') . 
+                                     '. Available: ' . ($product ? $product->current_stock : 0) . 
+                                     ', Requested: ' . $item['quantity']
+                        ], 400);
                     }
                     
-                    $createdSales[] = $sale;
+                    SaleItem::create([
+                        'sale_id' => $sale->id,
+                        'product_id' => $item['product_id'],
+                        'quantity' => $item['quantity'],
+                        'price' => $item['price'],
+                        'subtotal' => $item['subtotal'],
+                        'purchase_cost' => $purchaseCost
+                    ]);
+
+                    $product->current_stock -= $item['quantity'];
+                    $product->save();
+                    
+                    StockHistory::create([
+                        'product_id' => $product->id,
+                        'type' => 'Sale',
+                        'quantity_change' => -$item['quantity'],
+                        'new_quantity' => $product->current_stock,
+                        'unit_cost' => $purchaseCost,
+                        'unit_price' => $item['price'],
+                        'date' => now()->toDateString(),
+                        'reference_no' => $baseInvoiceNo,
+                        'customer_supplier' => $validated['customer_name'] ?? 'Walk-In Customer',
+                        'notes' => 'Sold in invoice #' . $baseInvoiceNo . ' (split)'
+                    ]);
                 }
+                
+                $createdSales[] = $sale;
 
                 // Clear cart after successful multiple payments
                 session()->forget('pos_cart');
@@ -877,12 +904,23 @@ class POSController extends Controller
             $totalExpense = 0;
 
             foreach ($sales as $sale) {
-                $method = strtolower($sale->payment_method);
-                
-                if (isset($paymentMethods[$method])) {
-                    $paymentMethods[$method] += $sale->total_amount;
+                if ($sale->payment_method === 'split' && $sale->payments) {
+                    foreach ($sale->payments as $payment) {
+                        $method = strtolower($payment->method);
+                        if (isset($paymentMethods[$method])) {
+                            $paymentMethods[$method] += $payment->amount;
+                        } else {
+                            $paymentMethods['other'] += $payment->amount;
+                        }
+                    }
                 } else {
-                    $paymentMethods['other'] += $sale->total_amount;
+                    $method = strtolower($sale->payment_method);
+                    
+                    if (isset($paymentMethods[$method])) {
+                        $paymentMethods[$method] += $sale->total_amount;
+                    } else {
+                        $paymentMethods['other'] += $sale->total_amount;
+                    }
                 }
                 
                 $totalSales += $sale->total_amount;
@@ -1120,8 +1158,16 @@ class POSController extends Controller
     public function recentSales()
     {
         // Get recent sales with items and products
-        $sales = Sale::with(['items.product', 'items.product.brand'])
-            ->orderBy('created_at', 'desc')
+        $query = Sale::with(['items.product', 'items.product.brand']);
+
+        // Data isolation: Cashiers only see their own sales
+        if (!auth()->user()->hasRole('admin') && !auth()->user()->hasRole('super_admin')) {
+            $query->whereHas('register', function($q) {
+                $q->where('user_id', auth()->id());
+            });
+        }
+
+        $sales = $query->orderBy('created_at', 'desc')
             ->paginate(50);
 
         return view('pos.recent-sales', compact('sales'));

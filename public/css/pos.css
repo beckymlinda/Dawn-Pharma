@@ -38,10 +38,10 @@
 
 /* Header */
 .pos-header {
-  background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+  background: linear-gradient(135deg, #004d3d 0%, #006b54 100%);
   color: white;
   padding: 1rem 1.5rem;
-  box-shadow: 0 2px 10px rgba(30, 58, 138, 0.1);
+  box-shadow: 0 2px 10px rgba(0, 77, 61, 0.1);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -108,19 +108,20 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 1.5rem;
-  gap: 1.5rem;
+  padding: 1rem;
+  gap: 1rem;
   max-width: 1400px;
   margin: 0 auto;
   width: 100%;
+  min-height: calc(100vh - 72px);
 }
 
 /* Search Section */
 .pos-search-section {
   background: white;
-  border-radius: 16px;
-  padding: 1.5rem;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border-radius: 14px;
+  padding: 1rem;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.07);
   border: 1px solid #e2e8f0;
 }
 
@@ -134,19 +135,19 @@
   background: #f8fafc;
   border: 2px solid #e2e8f0;
   border-radius: 12px;
-  padding: 0.75rem 1rem;
+  padding: 0.55rem 0.85rem;
   transition: all 0.2s ease;
 }
 
 .search-input-wrapper:focus-within {
-  border-color: #1e3a8a;
-  box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
+  border-color: #004d3d;
+  box-shadow: 0 0 0 3px rgba(0, 77, 61, 0.1);
 }
 
 .search-icon {
   color: #64748b;
-  margin-right: 0.75rem;
-  font-size: 1.25rem;
+  margin-right: 0.65rem;
+  font-size: 1.1rem;
 }
 
 .search-input {
@@ -154,9 +155,9 @@
   border: none;
   background: transparent;
   outline: none;
-  font-size: 1rem;
+  font-size: 0.95rem;
   color: #1e293b;
-  padding: 0.25rem 0;
+  padding: 0.2rem 0;
 }
 
 .search-input::placeholder {
@@ -256,45 +257,51 @@
 /* Cart Section */
 .pos-cart-section {
   background: white;
-  border-radius: 16px;
-  padding: 1.5rem;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border-radius: 14px;
+  padding: 1rem;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.07);
   border: 1px solid #e2e8f0;
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+}
+
+.cart-items {
+  min-height: 0;
+  max-height: calc(100vh - 320px);
 }
 
 .cart-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-bottom: 1rem;
+  padding-bottom: 0.75rem;
   border-bottom: 1px solid #e2e8f0;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 }
 
 .customer-selector {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.6rem;
 }
 
 .customer-select {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  padding: 0.5rem 0.75rem;
+  padding: 0.4rem 0.6rem;
   color: #1e293b;
-  font-size: 0.875rem;
+  font-size: 0.82rem;
   outline: none;
   cursor: pointer;
-  min-width: 150px;
+  min-width: 130px;
 }
 
 .cart-stats {
   display: flex;
-  gap: 2rem;
+  gap: 1.2rem;
 }
 
 .stat-item {
@@ -330,8 +337,8 @@
 }
 
 .cart-item:hover {
-  border-color: #1e3a8a;
-  box-shadow: 0 4px 12px rgba(30, 58, 138, 0.1);
+  border-color: #004d3d;
+  box-shadow: 0 4px 12px rgba(0, 77, 61, 0.1);
 }
 
 .item-header {
@@ -348,7 +355,7 @@
 .item-name {
   font-size: 1rem;
   font-weight: 600;
-  color: #1e3a8a;
+  color: #004d3d;
   margin: 0 0 0.25rem 0;
 }
 
@@ -476,29 +483,34 @@
 /* Cart Footer */
 .cart-footer {
   border-top: 1px solid #e2e8f0;
-  padding-top: 1rem;
+  padding-top: 0.75rem;
+  position: sticky;
+  bottom: 0;
+  background: white;
+  z-index: 100;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
 }
 
 .total-section {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
 }
 
 .total-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.75rem 0;
-  font-size: 0.9rem;
+  padding: 0.5rem 0;
+  font-size: 0.88rem;
   color: #64748b;
 }
 
 .total-row.final {
-  font-size: 1.125rem;
+  font-size: 1rem;
   font-weight: 700;
   color: #1e3a8a;
   border-top: 1px solid #e2e8f0;
-  padding-top: 1rem;
-  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  margin-top: 0.5rem;
 }
 
 .total-row.profit {
@@ -507,22 +519,22 @@
 
 .action-buttons {
   display: flex;
-  gap: 1rem;
+  gap: 0.75rem;
 }
 
 .action-btn {
   flex: 1;
-  padding: 1rem;
+  padding: 0.75rem;
   border: none;
-  border-radius: 12px;
-  font-size: 1rem;
+  border-radius: 11px;
+  font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
 .action-btn-cancel {
@@ -840,4 +852,134 @@
   .cart-item {
     padding: 0.75rem;
   }
+}
+
+/* ================================
+   BARCODE SCANNER STYLES
+=================================*/
+
+/* Hidden barcode input – off-screen but focusable */
+.barcode-hidden-input {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Header toggle button */
+.barcode-toggle-btn {
+  transition: all 0.25s ease;
+}
+
+.barcode-toggle-btn.barcode-active {
+  background: #22c55e !important;
+  border-color: #22c55e !important;
+  color: #fff !important;
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.45);
+  animation: barcode-btn-glow 2s ease-in-out infinite;
+}
+
+@keyframes barcode-btn-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(34, 197, 94, 0.35); }
+  50%      { box-shadow: 0 0 18px rgba(34, 197, 94, 0.6); }
+}
+
+/* Status bar */
+.barcode-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border: 1px solid #6ee7b7;
+  border-radius: 10px;
+  padding: 0.55rem 1rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.82rem;
+  color: #065f46;
+  gap: 0.75rem;
+  animation: barcode-status-slide 0.3s ease-out;
+}
+
+@keyframes barcode-status-slide {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.barcode-status-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.barcode-status-inner i {
+  font-size: 1.1rem;
+}
+
+/* Pulsing green dot */
+.barcode-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  display: inline-block;
+  flex-shrink: 0;
+  animation: barcode-pulse-anim 1.4s ease-in-out infinite;
+}
+
+@keyframes barcode-pulse-anim {
+  0%, 100% { transform: scale(1);   opacity: 1; }
+  50%      { transform: scale(1.6); opacity: 0.5; }
+}
+
+.barcode-status-close {
+  background: transparent;
+  border: none;
+  color: #065f46;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 6px;
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.barcode-status-close:hover {
+  background: rgba(6, 95, 70, 0.1);
+}
+
+/* Search wrapper – barcode mode border */
+.search-input-wrapper.barcode-mode-active {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.15);
+}
+
+/* Barcode scan icon color */
+.barcode-scan-icon {
+  color: #22c55e !important;
+}
+
+/* Flash on successful scan */
+.search-input-wrapper.barcode-scan-flash {
+  animation: scan-flash-success 0.55s ease;
+}
+
+@keyframes scan-flash-success {
+  0%   { background: #f8fafc; }
+  30%  { background: #dcfce7; border-color: #22c55e; box-shadow: 0 0 16px rgba(34, 197, 94, 0.35); }
+  100% { background: #f8fafc; }
+}
+
+/* Flash on error scan */
+.search-input-wrapper.barcode-scan-error {
+  animation: scan-flash-error 0.55s ease;
+}
+
+@keyframes scan-flash-error {
+  0%   { background: #f8fafc; }
+  30%  { background: #fef2f2; border-color: #ef4444; box-shadow: 0 0 16px rgba(239, 68, 68, 0.35); }
+  100% { background: #f8fafc; }
 }

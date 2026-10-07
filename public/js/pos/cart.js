@@ -184,75 +184,28 @@ POSCart.bindDirectEvents = function() {
  * Load cart from backend with race condition prevention and justPaid protection
  */
 POSCart.loadCart = function() {
-    console.log('🛒 Loading cart...');
+    console.log('🛒 Loading cart from local storage...');
     
     // Block loading if payment just completed
     if (POSCart.state.justPaid) {
-        console.log('⛔ Cart load blocked - payment just completed');
         return Promise.resolve(POSCart.state.items);
     }
     
-    // Prevent concurrent loads
-    if (POSCart.state.isLoading) {
-        console.log('⛔ Cart already loading');
-        return Promise.resolve(POSCart.state.items);
-    }
-    
-    // Check if DOM elements are ready
-    if (!document.getElementById('cart-items-container')) {
-        console.log('Cart container not ready, retrying in 100ms...');
-        setTimeout(POSCart.loadCart, 100);
-        return;
-    }
-    
-    // Clear frontend cart state first to prevent ghost cart
-    POSCart.state.items = [];
-    POSCart.renderCart();
-    
-    const csrfToken = POSApp.utils.getCsrfToken();
-    if (!csrfToken) {
-        console.error('❌ CSRF token not found for cart loading');
-        return Promise.reject(new Error('CSRF token not found'));
-    }
-    
-    POSCart.state.isLoading = true;
-    
-    console.log('📡 Loading cart from backend...');
-    
-    return fetch(POSApp.config.apiEndpoints.cartGet, {
-        method: 'GET',
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest',
-            'X-CSRF-TOKEN': csrfToken
+    try {
+        const localCart = localStorage.getItem('pos_local_cart');
+        if (localCart) {
+            POSCart.state.items = JSON.parse(localCart);
+            console.log('✅ Cart loaded from local storage:', POSCart.state.items.length, 'items');
+        } else {
+            POSCart.state.items = [];
         }
-    })
-    .then(function(response) {
-        if (!response.ok) {
-            throw new Error('HTTP error! status: ' + response.status);
-        }
-        return response.json();
-    })
-    .then(function(data) {
-        console.log('📦 Cart data received:', data);
-        
-        // Update state if not blocked by justPaid flag
-        if (!POSCart.state.justPaid) {
-            POSCart.state.items = data.cart || [];
-            console.log('✅ Cart updated:', POSCart.state.items.length, 'items');
-        }
-        
-        POSCart.renderCart();
-        return POSCart.state.items;
-    })
-    .catch(function(error) {
-        console.error('❌ Load cart error:', error);
+    } catch(e) {
+        console.error('Error loading local cart:', e);
         POSCart.state.items = [];
-        POSCart.renderCart();
-    })
-    .finally(function() {
-        POSCart.state.isLoading = false;
-        console.log('🏁 Cart loading completed');
-    });
+    }
+    
+    POSCart.renderCart();
+    return Promise.resolve(POSCart.state.items);
 };
 
 /**
@@ -501,96 +454,16 @@ POSCart.updateQuantityByProductId = function(productId, change, newQuantity = nu
         return;
     }
     
-    // Prevent duplicate operations
-    const operationKey = `update-${productId}-${targetQty}`;
-    if (POSCart.state.pendingOperations.has(operationKey)) {
-        console.log('⛔ Operation already pending:', operationKey);
-        return;
+    const product = window.POSProducts.state.productsData.find(p => p.id == productId);
+    if (product && product.current_stock < targetQty) {
+        POSApp.utils.showNotification('Insufficient stock. Available: ' + product.current_stock, 'warning');
+        targetQty = product.current_stock;
     }
     
-    POSCart.state.pendingOperations.add(operationKey);
-    
-    console.log('📤 Sending quantity update request:', {
-        productId: productId,
-        quantity: Math.round(targetQty),
-        currentQuantity: currentQty
-    });
-    
-    const csrfToken = POSApp.utils.getCsrfToken();
-    if (!csrfToken) {
-        console.error('❌ CSRF token not found');
-        POSCart.state.pendingOperations.delete(operationKey);
-        return;
-    }
-    
-    console.log('📡 Sending cart update to:', POSApp.config.apiEndpoints.cartUpdate);
-    
-    return fetch(POSApp.config.apiEndpoints.cartUpdate, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken,
-            'X-Requested-With': 'XMLHttpRequest'
-        },
-        body: JSON.stringify({
-            product_id: productId,
-            quantity: Math.round(targetQty)
-        })
-    })
-    .then(function(response) {
-        console.log('📡 Response status:', response.status);
-        return response.json().then(function(data) {
-            return {
-                status: response.status,
-                data: data,
-                ok: response.ok
-            };
-        });
-    })
-    .then(function(result) {
-        const { status, data, ok } = result;
-        console.log('📦 Cart update response:', data);
-        
-        // Handle error responses (400, 404, etc)
-        if (!ok) {
-            console.error('❌ Server error (status ' + status + '):', data.error);
-            POSApp.utils.showNotification('❌ ' + (data.error || 'Error updating quantity'), 'error');
-            POSCart.renderCart();
-            POSCart.state.pendingOperations.delete(operationKey);
-            return;
-        }
-        
-        if (data.success) {
-            console.log('✅ Cart before update:', POSCart.state.items.length, 'items');
-            
-            // Update state only if not just paid
-            if (!POSCart.state.justPaid) {
-                POSCart.state.items = data.cart || [];
-                console.log('✅ Cart state updated:', POSCart.state.items.length, 'items');
-            } else {
-                console.log('⛔ Cart state update skipped - just paid flag set');
-            }
-            
-            POSCart.renderCart();
-            
-            // Show warning if present
-            if (data.warning) {
-                POSApp.utils.showNotification(data.warning, 'warning');
-            }
-        } else {
-            console.error('❌ Error updating quantity:', data.error);
-            POSApp.utils.showNotification('❌ ' + (data.error || 'Unknown error'), 'error');
-            POSCart.renderCart();
-        }
-    })
-    .catch(function(error) {
-        console.error('❌ Update cart quantity error:', error);
-        POSApp.utils.showNotification('❌ Error updating quantity. Please try again.', 'error');
-        POSCart.renderCart();
-    })
-    .finally(function() {
-        POSCart.state.pendingOperations.delete(operationKey);
-    });
+    POSCart.state.items[itemIndex].quantity = targetQty;
+    POSCart.state.items[itemIndex].subtotal = targetQty * parseFloat(currentItem.price || currentItem.selling_price || 0);
+    POSCart.renderCart();
+    localStorage.setItem('pos_local_cart', JSON.stringify(POSCart.state.items));
 };
 
 /**
@@ -651,77 +524,10 @@ POSCart.removeFromCartByProductId = function(productId) {
         return;
     }
     
-    const item = POSCart.state.items[itemIndex];
-    const productName = item.name || (item.product && item.product.name) || 'Unknown Product';
-    
-    if (!confirm(`Remove "${productName}" from cart?`)) {
-        console.log('⛔ Item removal cancelled by user');
-        return;
-    }
-    
-    // Prevent duplicate operations
-    const operationKey = `remove-${productId}`;
-    if (POSCart.state.pendingOperations.has(operationKey)) {
-        console.log('⛔ Remove operation already pending');
-        return;
-    }
-    
-    POSCart.state.pendingOperations.add(operationKey);
-    
-    console.log('📤 Sending remove request for product:', productId);
-    
-    const csrfToken = POSApp.utils.getCsrfToken();
-    if (!csrfToken) {
-        console.error('❌ CSRF token not found');
-        POSCart.state.pendingOperations.delete(operationKey);
-        return;
-    }
-    
-    console.log('📡 Sending cart remove to:', POSApp.config.apiEndpoints.cartRemove);
-    
-    return fetch(POSApp.config.apiEndpoints.cartRemove, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken,
-            'X-Requested-With': 'XMLHttpRequest'
-        },
-        body: JSON.stringify({
-            product_id: productId
-        })
-    })
-    .then(function(response) {
-        if (!response.ok) {
-            throw new Error('HTTP error! status: ' + response.status);
-        }
-        return response.json();
-    })
-    .then(function(data) {
-        console.log('📦 Remove response:', data);
-        
-        if (data.success) {
-            // Update state only if not just paid
-            if (!POSCart.state.justPaid) {
-                POSCart.state.items = data.cart || [];
-                console.log('✅ Item removed from cart');
-            } else {
-                console.log('⛔ Cart state update skipped - just paid flag set');
-            }
-            
-            POSCart.renderCart();
-            POSApp.utils.showNotification('Item removed from cart', 'success');
-        } else {
-            console.error('❌ Error removing item:', data.error);
-            POSApp.utils.showNotification('Error removing item: ' + (data.error || 'Unknown error'), 'error');
-        }
-    })
-    .catch(function(error) {
-        console.error('❌ Remove from cart error:', error);
-        POSApp.utils.showNotification('Error removing item. Please try again.', 'error');
-    })
-    .finally(function() {
-        POSCart.state.pendingOperations.delete(operationKey);
-    });
+    POSCart.state.items.splice(itemIndex, 1);
+    POSCart.renderCart();
+    localStorage.setItem('pos_local_cart', JSON.stringify(POSCart.state.items));
+    POSApp.utils.showNotification('Item removed from cart', 'success');
 };
 
 /**
@@ -729,25 +535,10 @@ POSCart.removeFromCartByProductId = function(productId) {
  */
 POSCart.clearCartCompletely = function() {
     console.log('🧹 Clearing cart completely...');
-    
-    // Clear frontend state
     POSCart.state.items = [];
     POSCart.renderCart();
-    
-    // Clear backend cart
-    const csrfToken = POSApp.utils.getCsrfToken();
-    if (csrfToken) {
-        fetch(POSApp.config.apiEndpoints.cartClear, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrfToken,
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        }).catch(function(error) {
-            console.error('❌ Clear cart error:', error);
-        });
-    }
+    localStorage.removeItem('pos_local_cart');
+    POSApp.utils.showNotification('Cart cleared', 'success');
 };
 
 /**
@@ -779,63 +570,10 @@ POSCart.clearCart = function() {
         return;
     }
     
-    // Prevent duplicate operations
-    const operationKey = 'clear-cart';
-    if (POSCart.state.pendingOperations.has(operationKey)) {
-        console.log('⛔ Clear operation already pending');
-        return;
-    }
-    
-    POSCart.state.pendingOperations.add(operationKey);
-    
-    const csrfToken = POSApp.utils.getCsrfToken();
-    if (!csrfToken) {
-        console.error('❌ CSRF token not found');
-        POSCart.state.pendingOperations.delete(operationKey);
-        return;
-    }
-    
-    console.log('📤 Sending clear cart request');
-    
-    return fetch(POSApp.config.apiEndpoints.cartClear, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken,
-            'X-Requested-With': 'XMLHttpRequest'
-        }
-    })
-    .then(function(response) {
-        if (!response.ok) {
-            throw new Error('HTTP error! status: ' + response.status);
-        }
-        return response.json();
-    })
-    .then(function(data) {
-        console.log('📦 Clear cart response:', data);
-        
-        if (data.success) {
-            console.log('✅ Cart before clear:', POSCart.state.items.length, 'items');
-            
-            // Update state
-            POSCart.state.items = data.cart || [];
-            POSCart.renderCart();
-            
-            console.log('✅ Cart cleared successfully:', POSCart.state.items.length, 'items remaining');
-            POSApp.utils.showNotification('Cart cleared', 'info');
-        } else {
-            console.error('❌ Error clearing cart:', data.error);
-            POSApp.utils.showNotification('Error clearing cart: ' + (data.error || 'Unknown error'), 'error');
-        }
-    })
-    .catch(function(error) {
-        console.error('❌ Clear cart error:', error);
-        POSApp.utils.showNotification('Error clearing cart. Please try again.', 'error');
-    })
-    .finally(function() {
-        POSCart.state.pendingOperations.delete(operationKey);
-        console.log('🏁 Clear cart operation completed');
-    });
+    POSCart.state.items = [];
+    POSCart.renderCart();
+    localStorage.removeItem('pos_local_cart');
+    POSApp.utils.showNotification('Cart cleared', 'success');
 };
 
 /**
@@ -851,46 +589,18 @@ POSCart.clearCartAfterPayment = function() {
     // Clear frontend immediately
     POSCart.state.items = [];
     POSCart.renderCart();
+    localStorage.removeItem('pos_local_cart');
     
-    const csrfToken = POSApp.utils.getCsrfToken();
-    if (!csrfToken) {
-        console.error('❌ CSRF token not found');
-        // Reset flag after delay
-        setTimeout(() => POSCart.state.justPaid = false, 3000);
-        return;
+    // Refresh product data
+    if (window.POSProducts && window.POSProducts.refreshProductData) {
+        window.POSProducts.refreshProductData();
     }
     
-    // Clear backend cart
-    return fetch(POSApp.config.apiEndpoints.cartClear, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken,
-            'X-Requested-With': 'XMLHttpRequest'
-        }
-    })
-    .then(function(response) {
-        if (!response.ok) throw new Error('HTTP error! status: ' + response.status);
-        return response.json();
-    })
-    .then(function(data) {
-        console.log('📦 Backend cart cleared:', data.success);
-        
-        // Refresh product data
-        if (window.POSProducts && window.POSProducts.refreshProductData) {
-            window.POSProducts.refreshProductData();
-        }
-    })
-    .catch(function(error) {
-        console.error('❌ Clear cart error:', error);
-    })
-    .finally(function() {
-        // Reset justPaid flag after 3 seconds
-        setTimeout(() => {
-            POSCart.state.justPaid = false;
-            console.log('🚩 justPaid flag reset - cart reloads allowed');
-        }, 3000);
-    });
+    // Reset justPaid flag after 3 seconds
+    setTimeout(() => {
+        POSCart.state.justPaid = false;
+        console.log('🚩 justPaid flag reset - cart reloads allowed');
+    }, 3000);
 };
 
 
@@ -910,7 +620,9 @@ POSCart.loadRegisterSales = function() {
     
     return fetch(POSApp.config.apiEndpoints.registerDetails, {
         method: 'GET',
+        credentials: 'same-origin',
         headers: {
+            'Accept': 'application/json',
             'X-Requested-With': 'XMLHttpRequest',
             'X-CSRF-TOKEN': csrfToken
         }

@@ -9,19 +9,23 @@ use Illuminate\Http\Request;
 
 class StockReportController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $products = Product::with(['category', 'brand', 'businessLocation'])
-            ->where('current_stock', '>', 0)
-            ->get();
+        $perPage = $request->input('per_page', 25);
+        
+        $query = Product::with(['category', 'brand', 'businessLocation'])
+            ->where('current_stock', '>', 0);
+            
+        $products = $query->paginate($perPage);
 
         $locations = Location::all();
 
-        // Calculate summary statistics
+        // Calculate summary statistics (from all products, not just paginated)
+        $allProducts = Product::where('current_stock', '>', 0)->get();
         $totalPurchaseValue = 0;
         $totalSaleValue = 0;
 
-        foreach ($products as $product) {
+        foreach ($allProducts as $product) {
             $purchaseValue = $product->current_stock * $product->purchase_price;
             $saleValue = $product->current_stock * $product->selling_price;
             
@@ -36,6 +40,18 @@ class StockReportController extends Controller
             'products', 'locations', 'totalPurchaseValue', 
             'totalSaleValue', 'potentialProfit', 'profitMargin'
         ));
+    }
+
+    public function lowStock(Request $request)
+    {
+        $perPage = $request->input('per_page', 25);
+        
+        $query = Product::with(['category', 'brand', 'businessLocation'])
+            ->whereColumn('current_stock', '<=', 'alert_quantity');
+            
+        $products = $query->paginate($perPage);
+
+        return view('pos.low-stock', compact('products'));
     }
 
     public function productStockHistory($productId)

@@ -16,6 +16,10 @@ class ActivityLogController extends Controller
 
     public function index(Request $request)
     {
+        if (!auth()->user()->hasRole('admin') && !auth()->user()->hasRole('super_admin')) {
+            abort(403, 'Unauthorized action.');
+        }
+        
         $query = ActivityLog::with(['user', 'subject'])
             ->latest('created_at');
 
@@ -67,12 +71,18 @@ class ActivityLogController extends Controller
 
     public function show(ActivityLog $activityLog)
     {
+        if (!auth()->user()->hasRole('admin') && !auth()->user()->hasRole('super_admin')) {
+            abort(403, 'Unauthorized action.');
+        }
         $activityLog->load(['user', 'subject']);
         return view('activity-log.show', compact('activityLog'));
     }
 
     public function destroy(ActivityLog $activityLog)
     {
+        if (!auth()->user()->hasRole('admin') && !auth()->user()->hasRole('super_admin')) {
+            abort(403, 'Unauthorized action.');
+        }
         $activityLog->delete();
         return redirect()->route('activity-log.index')
             ->with('success', 'Activity log deleted successfully.');
@@ -80,6 +90,9 @@ class ActivityLogController extends Controller
 
     public function clearOldLogs()
     {
+        if (!auth()->user()->hasRole('admin') && !auth()->user()->hasRole('super_admin')) {
+            abort(403, 'Unauthorized action.');
+        }
         // Delete logs older than 90 days
         $deletedCount = ActivityLog::where('created_at', '<', Carbon::now()->subDays(90))
             ->delete();
@@ -90,6 +103,9 @@ class ActivityLogController extends Controller
 
     public function export(Request $request)
     {
+        if (!auth()->user()->hasRole('admin') && !auth()->user()->hasRole('super_admin')) {
+            abort(403, 'Unauthorized action.');
+        }
         $query = ActivityLog::with(['user', 'subject']);
 
         // Apply same filters as index
