@@ -164,9 +164,17 @@
         </div>
         @endif
 
+        <!-- Expenses -->
+        @if(auth()->user()->hasPermission('access_all_expenses'))
+        <a href="{{ route('expenses.index') }}"
+           class="list-group-item list-group-item-action p-3 {{ request()->routeIs('expenses.*') ? 'active' : '' }}">
+            <i class="bi bi-wallet2 me-2"></i> Expenses
+        </a>
+        @endif
+
         <!-- Activity Log -->
         @if(auth()->user()->hasRole('admin') || auth()->user()->hasRole('super_admin'))
-        <a href="{{ route('activity-log.index') }}" 
+        <a href="{{ route('activity-log.index') }}"
            class="list-group-item list-group-item-action p-3 {{ request()->routeIs('activity-log.*') ? 'active' : '' }}">
             <i class="bi bi-clock-history me-2"></i> Activity Log
         </a>

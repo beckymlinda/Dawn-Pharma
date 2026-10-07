@@ -18,7 +18,11 @@ class ProfileTest extends TestCase
             ->actingAs($user)
             ->get('/profile');
 
-        $response->assertOk();
+        // The forms must actually be on the page (it once rendered empty)
+        $response->assertOk()
+            ->assertSee('name="name"', false)
+            ->assertSee('name="current_password"', false)
+            ->assertSee($user->email);
     }
 
     public function test_profile_information_can_be_updated(): void

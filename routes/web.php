@@ -20,6 +20,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\IntegrityController;
 use App\Http\Controllers\UserManagementController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\SalesSummaryController;
 use Illuminate\Support\Facades\Artisan;
@@ -163,6 +164,11 @@ Route::middleware(['auth'])->group(function () use ($permittedResource) {
         Route::get('/stock-report/export/pdf', [StockReportController::class, 'exportPdf'])->name('stock.report.export.pdf');
         Route::get('/stock-history/{productId}', [StockReportController::class, 'productStockHistory'])->name('stock.history.product');
     });
+
+    // Expenses (running costs used by the Profit & Loss report)
+    Route::get('/expenses', [ExpenseController::class, 'index'])->name('expenses.index')->middleware('permission:access_all_expenses');
+    Route::post('/expenses', [ExpenseController::class, 'store'])->name('expenses.store')->middleware(['permission:add_expense', 'log.activity']);
+    Route::delete('/expenses/{expense}', [ExpenseController::class, 'destroy'])->name('expenses.destroy')->middleware(['permission:delete_expense', 'log.activity']);
 
     // Stock Adjustments
     Route::get('/stock-adjustments', [StockAdjustmentController::class, 'index'])->name('stock-adjustments.index')->middleware('permission:view_stock_adjustments');

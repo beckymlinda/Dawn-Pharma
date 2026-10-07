@@ -412,6 +412,19 @@ class SaleController extends Controller
             if ($product) {
                 $product->current_stock += $item->quantity;
                 $product->save();
+
+                // Keep the stock history complete (reports rebuild past stock levels from it)
+                \App\Models\StockHistory::create([
+                    'product_id' => $product->id,
+                    'type' => 'Stock Adjustment',
+                    'quantity_change' => $item->quantity,
+                    'new_quantity' => $product->current_stock,
+                    'unit_cost' => $item->purchase_cost ?? $product->purchase_price,
+                    'unit_price' => $item->price,
+                    'date' => now()->toDateString(),
+                    'reference_no' => $sale->invoice_no,
+                    'notes' => 'Stock returned: sale #' . $sale->invoice_no . ' deleted by ' . auth()->user()->name,
+                ]);
             }
         }
         
