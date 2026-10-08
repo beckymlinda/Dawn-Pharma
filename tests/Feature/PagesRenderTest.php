@@ -40,7 +40,8 @@ class PagesRenderTest extends TestCase
         foreach (Route::getRoutes() as $route) {
             $uri = $route->uri();
             if (!in_array('GET', $route->methods()) || str_contains($uri, '{')
-                || !in_array('auth', $route->gatherMiddleware()) || in_array($uri, self::SKIP)) {
+                || !in_array('auth', $route->gatherMiddleware()) || in_array($uri, self::SKIP)
+                || str_starts_with($uri, 'platform')) {   // admin portal: only on the admin host (TenancyTest)
                 continue;
             }
 

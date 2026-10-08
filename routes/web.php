@@ -21,6 +21,11 @@ use App\Http\Controllers\IntegrityController;
 use App\Http\Controllers\UserManagementController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExpenseController;
+use App\Http\Controllers\ImpersonationController;
+use App\Http\Controllers\PlatformAuthController;
+use App\Http\Controllers\PlatformController;
+use App\Http\Controllers\ShopEntryController;
+use App\Http\Controllers\SetupController;
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\SalesSummaryController;
 use Illuminate\Support\Facades\Artisan;
@@ -40,35 +45,34 @@ Route::get('/session/token', function () {
 
 
 
-// Server maintenance for hosting without a terminal (cPanel). Super admins only.
+// Server setup for hosting without a terminal (cPanel): token in .env, see SetupController.
 // There is deliberately no route that wipes or re-seeds the database.
-Route::middleware('auth')->prefix('maintenance')->group(function () {
-    $superAdminOnly = function () {
-        abort_unless(auth()->user()->hasRole('super_admin'), 403);
-    };
+Route::get('/setup', [SetupController::class, 'show']);
+Route::post('/setup/admin', [SetupController::class, 'createAdmin']);
+Route::post('/setup/{action}', [SetupController::class, 'run'])->whereIn('action', ['migrate', 'clear-cache', 'storage-link']);
 
-    Route::get('/clear-cache', function () use ($superAdminOnly) {
-        $superAdminOnly();
-        Artisan::call('optimize:clear');
-        return '<pre>' . e(Artisan::output()) . '</pre>';
-    });
+// Admin portal for the software owner (/platform)
+Route::get('/platform/login', [PlatformAuthController::class, 'show'])->name('platform.login');
+Route::post('/platform/login', [PlatformAuthController::class, 'login']);
+Route::middleware(['auth', 'platform'])->prefix('platform')->name('platform.')->group(function () {
+    Route::get('/', [PlatformController::class, 'index'])->name('index');
+    Route::get('/tenants', [PlatformController::class, 'tenants'])->name('tenants.index');
+    Route::get('/income', [\App\Http\Controllers\PlatformIncomeController::class, 'index'])->name('income');
+    Route::get('/tenants/create', [PlatformController::class, 'create'])->name('tenants.create');
+    Route::post('/tenants', [PlatformController::class, 'store'])->name('tenants.store');
+    Route::get('/tenants/{tenant}', [PlatformController::class, 'show'])->name('tenants.show');
+    Route::put('/tenants/{tenant}', [PlatformController::class, 'update'])->name('tenants.update');
+    Route::post('/tenants/{tenant}/extend', [PlatformController::class, 'extend'])->name('tenants.extend');
+    Route::post('/tenants/{tenant}/suspend', [PlatformController::class, 'suspend'])->name('tenants.suspend');
+    Route::post('/tenants/{tenant}/reactivate', [PlatformController::class, 'reactivate'])->name('tenants.reactivate');
+    Route::post('/tenants/{tenant}/impersonate', [ImpersonationController::class, 'start'])->name('tenants.impersonate');
 
-    // Runs only migrations that have not run yet; existing data is kept.
-    Route::get('/migrate', function () use ($superAdminOnly) {
-        $superAdminOnly();
-        Artisan::call('migrate', ['--force' => true]);
-        return '<pre>' . e(Artisan::output()) . '</pre>';
-    });
-
-    Route::get('/storage-link', function () use ($superAdminOnly) {
-        $superAdminOnly();
-        $link = public_path('storage');
-        if (is_link($link)) {
-            File::delete($link);
-        }
-        Artisan::call('storage:link');
-        return '<pre>' . e(Artisan::output()) . '</pre>';
-    });
+    // Proofs of payment uploaded by shops
+    Route::get('/payments', [\App\Http\Controllers\PaymentReviewController::class, 'index'])->name('payments.index');
+    Route::post('/payments/{submission}/approve', [\App\Http\Controllers\PaymentReviewController::class, 'approve'])->name('payments.approve');
+    Route::post('/payments/{submission}/reject', [\App\Http\Controllers\PaymentReviewController::class, 'reject'])->name('payments.reject');
+    Route::get('/payments/{submission}/proof', [\App\Http\Controllers\PaymentReviewController::class, 'proof'])->name('payments.proof');
+    Route::post('/payments/{submission}/resend-email', [\App\Http\Controllers\PaymentReviewController::class, 'resendEmail'])->name('payments.resend');
 });
 
 // Registers a resource controller with the matching view/add/edit/delete permissions
@@ -203,6 +207,11 @@ Route::middleware(['auth'])->group(function () use ($permittedResource) {
 
     // Admin-only areas (same rule as the sidebar)
     Route::middleware('role:admin,super_admin')->group(function () {
+        // The shop's subscription: days left, how to renew, payments
+        Route::get('/billing', [\App\Http\Controllers\BillingController::class, 'index'])->name('billing.index');
+        Route::post('/billing/proof', [\App\Http\Controllers\BillingController::class, 'submit'])->name('billing.submit')->middleware('throttle:10,60');
+        Route::get('/billing/proof/{submission}', [\App\Http\Controllers\BillingController::class, 'proof'])->name('billing.proof')->whereNumber('submission');
+
         // Activity Log (export is declared before {activityLog} so it is not mistaken for an id)
         Route::get('/activity-log', [ActivityLogController::class, 'index'])->name('activity-log.index');
         Route::get('/activity-log/export', [ActivityLogController::class, 'export'])->name('activity-log.export');
@@ -238,3 +247,7 @@ Route::middleware('auth')->group(function () {
 });
 
 require __DIR__.'/auth.php';
+
+// Shop link: /{slug} selects the shop in this browser and opens its login.
+// A fallback route, so it only answers addresses no other page uses.
+Route::fallback(ShopEntryController::class);

@@ -27,6 +27,8 @@ class LoginRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // Which shop to log in to, when this browser has not opened a shop link yet
+            'shop' => [tenant() ? 'nullable' : 'required', 'string', 'max:63'],
             'email' => ['required', 'string', 'email'],
             'password' => ['required', 'string'],
         ];
@@ -40,6 +42,17 @@ class LoginRequest extends FormRequest
     public function authenticate(): void
     {
         $this->ensureIsNotRateLimited();
+
+        // A Shop code on the form selects that shop (users are looked up within it)
+        if ($this->filled('shop')) {
+            $tenant = \App\Models\Tenant::where('slug', Str::lower(trim($this->input('shop'))))->first();
+            if (!$tenant) {
+                RateLimiter::hit($this->throttleKey());
+                throw ValidationException::withMessages(['shop' => 'There is no shop with this code. Check the link your shop gave you.']);
+            }
+            set_tenant($tenant);
+            $this->session()->put('tenant_id', $tenant->id);
+        }
 
         if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
             RateLimiter::hit($this->throttleKey());

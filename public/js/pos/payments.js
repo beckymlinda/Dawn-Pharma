@@ -25,289 +25,415 @@ POSPayments.init = function() {
     window.finalizePayment = POSPayments.finalizePayment;
     window.printReceipt = POSPayments.printReceipt;
     window.clearCartAfterPayment = POSPayments.clearCartAfterPayment;
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', POSPayments.bindPaymentModal);
+    } else {
+        POSPayments.bindPaymentModal();
+    }
     
     console.log('POS Payments module initialized');
 };
 
 /**
- * Setup payment modal with current cart data
+ * Payment methods offered at the till (keys match the server's PaymentMethods)
+ */
+POSPayments.METHODS = [
+    // The first five are shown as tiles; the rest are under "More…"
+    { key: 'cash', label: 'Cash', icon: 'bi-cash-stack', tile: true },
+    { key: 'airtel_money', label: 'Airtel Money', icon: 'bi-phone', tile: true },
+    { key: 'mpamba', label: 'TNM Mpamba', icon: 'bi-phone-fill', tile: true },
+    { key: 'card', label: 'Card', icon: 'bi-credit-card', tile: true },
+    { key: 'bank_transfer', label: 'Bank transfer', icon: 'bi-bank', tile: true },
+    { key: 'national_bank', label: 'National Bank', icon: 'bi-bank2' },
+    { key: 'standard_bank', label: 'Standard Bank', icon: 'bi-building' },
+    { key: 'cheque', label: 'Cheque', icon: 'bi-journal-text' },
+    { key: 'advance', label: 'Advance', icon: 'bi-wallet2' }
+];
+
+POSPayments.methodLabel = function(key) {
+    const method = POSPayments.METHODS.find(function(m) { return m.key === key; });
+    return method ? method.label : key;
+};
+
+/** Total of the cart, from the cart itself */
+POSPayments.cartTotal = function() {
+    const items = (window.POSCart && window.POSCart.state.items) || [];
+    return items.reduce(function(sum, item) {
+        return sum + (parseFloat(item.price) || parseFloat(item.selling_price) || 0) * (parseFloat(item.quantity) || 1);
+    }, 0);
+};
+
+POSPayments.round2 = function(value) {
+    return Math.round((parseFloat(value) || 0) * 100) / 100;
+};
+
+/**
+ * Open the payment window: show the amount due and the items, start with cash.
  */
 POSPayments.setupPaymentModal = function() {
-    console.log('Setting up payment modal...');
-    console.log('Current cart data:', window.POSCart ? window.POSCart.state.items : 'Cart not loaded');
-    
     if (!window.POSCart) {
         console.error('Cart module not loaded');
         return;
     }
-    
-    // Calculate cart total first
-    let cartTotal = 0;
-    for (let i = 0; i < window.POSCart.state.items.length; i++) {
-        const item = window.POSCart.state.items[i];
-        console.log('Processing cart item:', item);
-        let itemPrice = parseFloat(item.price) || parseFloat(item.selling_price) || 0;
-        let itemQty = item.quantity || 1;
-        console.log('Item:', item.name, 'Price:', itemPrice, 'Qty:', itemQty);
-        cartTotal += itemPrice * itemQty;
-    }
-    
-    console.log('Cart total calculated:', cartTotal);
-    
-    // Update total payable
+
+    const total = POSPayments.round2(POSPayments.cartTotal());
+    const items = window.POSCart.state.items || [];
+
+    // A leftover "added to cart" message must not sit over the payment window
+    document.querySelectorAll('.pos-toast').forEach(function(t) { t.remove(); });
+
+    // Keep the cart footer in step (other code reads it)
     const totalPayableElement = document.getElementById('totalPayable');
-    if (totalPayableElement) {
-        totalPayableElement.textContent = POSApp.utils.formatCurrency(cartTotal);
-    }
-    
-    // Update modal total amount
-    const modalTotalAmountElement = document.getElementById('modalTotalAmount');
-    if (modalTotalAmountElement) {
-        modalTotalAmountElement.textContent = cartTotal.toFixed(2);
-    }
-    
-    const paymentMethodsList = document.getElementById('paymentMethodsList');
-    if (paymentMethodsList) {
-        paymentMethodsList.innerHTML = `
-            <div class="payment-method-item border rounded p-3 mb-2" data-payment-index="0">
-                <div class="row align-items-center">
-                    <div class="col-md-4">
-                        <select class="form-select payment-method-select" onchange="updatePaymentSummary()">
-                            <option value="cash">Cash</option>
-                            <option value="card">Card</option>
-                            <option value="cheque">Cheque</option>
-                            <option value="bank_transfer">Bank Transfer</option>
-                            <option value="airtel_money">Airtel Money</option>
-                            <option value="mpamba">TNM Mpamba</option>
-                            <option value="national_bank">National Bank</option>
-                            <option value="standard_bank">Standard Bank</option>
-                            <option value="advance">Advance</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <input type="number" class="form-control payment-amount" placeholder="Amount" min="0" step="1" value="${Number(cartTotal.toFixed(2))}" onchange="updatePaymentSummary()">
-                    </div>
-                    <div class="col-md-2">
-                        <button type="button" class="btn btn-outline-danger btn-sm" onclick="removePaymentMethod(0)" style="display: none;">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-    
-    // Reset custom fields and state
+    if (totalPayableElement) totalPayableElement.textContent = POSApp.utils.formatCurrency(total);
+
+    POSPayments.state.total = total;
+    POSPayments.state.mode = 'single';
+    POSPayments.state.method = 'cash';
+    POSPayments.state.splitLines = [];
     POSPayments.state.amountGiven = 0;
     POSPayments.state.changeAmount = 0;
-    
-    const amountGivenElement = document.getElementById('amountGiven');
-    const changeAmountElement = document.getElementById('changeAmount');
-    const paymentNotesElement = document.getElementById('paymentNotes');
-    
-    if (amountGivenElement) amountGivenElement.value = '';
-    if (changeAmountElement) changeAmountElement.textContent = '0.00';
-    if (paymentNotesElement) paymentNotesElement.value = '';
-    
+    POSPayments.setSubmitting(false);
+
+    document.getElementById('payDue').textContent = POSApp.utils.formatCurrency(total);
+    const units = items.reduce(function(sum, item) { return sum + (parseFloat(item.quantity) || 1); }, 0);
+    document.getElementById('payItemCount').textContent = units + (units === 1 ? ' item' : ' items');
+
+    const esc = function(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function(c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); };
+    document.getElementById('payItems').innerHTML = items.map(function(item) {
+        const name = item.name || (item.product && item.product.name) || 'Item';
+        const qty = parseFloat(item.quantity) || 1;
+        const price = parseFloat(item.price) || parseFloat(item.selling_price) || 0;
+        return '<div class="pay-item"><span class="pay-item-name">' + esc(qty) + ' × ' + esc(name) + '</span>' +
+            '<span class="pay-item-total">' + POSApp.utils.formatCurrency(qty * price) + '</span></div>';
+    }).join('');
+
+    const cashInput = document.getElementById('amountGiven');
+    if (cashInput) cashInput.value = '';
+
+    POSPayments.renderMethods();
+    POSPayments.renderQuickCash();
+    POSPayments.showMode('single');
+    // Also after the opening animation, in case the shown event came early
+    setTimeout(POSPayments.focusCash, 400);
+};
+
+/** The method tiles for a single payment (five tiles + "More…" for the rest, so it fits on two rows) */
+POSPayments.renderMethods = function() {
+    const box = document.getElementById('payMethods');
+    if (!box) return;
+    const current = POSPayments.state.method;
+    const tiles = POSPayments.METHODS.filter(function(m) { return m.tile; }).map(function(m) {
+        const active = m.key === current;
+        return '<button type="button" role="radio" aria-checked="' + active + '" class="pay-method' + (active ? ' active' : '') + '" data-method="' + m.key + '">' +
+            '<i class="bi ' + m.icon + '"></i><span>' + m.label + '</span></button>';
+    }).join('');
+    const more = POSPayments.METHODS.filter(function(m) { return !m.tile; });
+    const moreActive = more.some(function(m) { return m.key === current; });
+    const select = '<select class="pay-method pay-more-select' + (moreActive ? ' active' : '') + '" aria-label="Other payment methods">' +
+        '<option value=""' + (moreActive ? '' : ' selected') + ' disabled>More…</option>' +
+        more.map(function(m) { return '<option value="' + m.key + '"' + (m.key === current ? ' selected' : '') + '>' + m.label + '</option>'; }).join('') +
+        '</select>';
+    box.innerHTML = tiles + select;
+};
+
+/** Quick cash buttons: exact amount and the next round amounts customers usually hand over */
+POSPayments.renderQuickCash = function() {
+    const box = document.getElementById('payQuickCash');
+    if (!box) return;
+    const total = POSPayments.state.total;
+    const options = [total];
+    [500, 1000, 5000, 10000].forEach(function(step) {
+        const up = Math.ceil(total / step) * step;
+        if (up > total) options.push(up);
+    });
+    [2000, 5000, 10000, 20000, 50000].forEach(function(note) {
+        if (note > total) options.push(note);
+    });
+    const unique = Array.from(new Set(options.map(POSPayments.round2))).sort(function(a, b) { return a - b; }).slice(0, 5);
+
+    box.innerHTML = unique.map(function(value, i) {
+        return '<button type="button" class="pay-quick-btn" data-amount="' + value + '">' +
+            (i === 0 ? 'Exact' : Number(value).toLocaleString('en-US')) + '</button>';
+    }).join('');
+};
+
+POSPayments.showMode = function(mode) {
+    POSPayments.state.mode = mode;
+    document.getElementById('paySingle').classList.toggle('d-none', mode !== 'single');
+    document.getElementById('paySplit').classList.toggle('d-none', mode !== 'split');
+    document.getElementById('paySplitToggle').classList.toggle('d-none', mode === 'split');
+
+    if (mode === 'split' && POSPayments.state.splitLines.length === 0) {
+        // First line: the method chosen so far, amount typed by the cashier.
+        // Last line fills itself with whatever is left ("auto").
+        POSPayments.state.splitLines = [
+            { method: POSPayments.state.method, amount: '', auto: false },
+            { method: POSPayments.state.method === 'cash' ? 'airtel_money' : 'cash', amount: POSPayments.state.total, auto: true }
+        ];
+    }
+    if (mode === 'split') POSPayments.renderSplitLines();
     POSPayments.updatePaymentSummary();
 };
 
+/** Split payment lines: method + amount each */
+POSPayments.renderSplitLines = function() {
+    const list = document.getElementById('paymentMethodsList');
+    if (!list) return;
+    const options = function(selected) {
+        return POSPayments.METHODS.map(function(m) {
+            return '<option value="' + m.key + '"' + (m.key === selected ? ' selected' : '') + '>' + m.label + '</option>';
+        }).join('');
+    };
+    list.innerHTML = POSPayments.state.splitLines.map(function(line, i) {
+        return '<div class="pay-split-line payment-method-item" data-line="' + i + '">' +
+            '<select class="form-select payment-method-select" data-line="' + i + '" aria-label="Payment method ' + (i + 1) + '">' + options(line.method) + '</select>' +
+            '<div class="input-group"><span class="input-group-text">MWK</span>' +
+            '<input type="number" class="form-control payment-amount' + (line.auto ? ' is-auto' : '') + '" data-line="' + i + '" min="0" step="1" inputmode="decimal" placeholder="0" value="' + (line.amount === '' ? '' : line.amount) + '" aria-label="Amount ' + (i + 1) + '"' + (line.auto ? ' title="Filled with the remaining balance"' : '') + '></div>' +
+            (POSPayments.state.splitLines.length > 2 ? '<button type="button" class="btn btn-outline-danger pay-remove" data-line="' + i + '" aria-label="Remove"><i class="bi bi-x-lg"></i></button>' : '') +
+            '</div>';
+    }).join('');
+};
+
 /**
- * Update payment summary calculations
+ * Split payment: the "auto" line always holds what is left after the other lines.
+ * Its input is updated in place, so the cashier keeps typing where they are.
  */
-POSPayments.getPaymentTotals = function() {
-    const totalPayableElement = document.getElementById('totalPayable');
-    const totalPayable = totalPayableElement ? parseFloat(totalPayableElement.textContent.replace('MWK ', '').replace(/,/g, '')) || 0 : 0;
-    let totalPaid = 0;
-
-    document.querySelectorAll('.payment-amount').forEach(function(input) {
-        totalPaid += parseFloat(input.value) || 0;
-    });
-
-    return { totalPayable, totalPaid };
+POSPayments.fillAutoLine = function() {
+    const lines = POSPayments.state.splitLines;
+    const autoIndex = lines.findIndex(function(l) { return l.auto; });
+    if (autoIndex === -1) return;
+    const others = lines.reduce(function(sum, l, i) { return i === autoIndex ? sum : sum + (parseFloat(l.amount) || 0); }, 0);
+    lines[autoIndex].amount = POSPayments.round2(Math.max(0, POSPayments.state.total - others));
+    const input = document.querySelector('.payment-amount[data-line="' + autoIndex + '"]');
+    if (input && document.activeElement !== input) input.value = lines[autoIndex].amount;
 };
 
-POSPayments.hasValidPaymentMethod = function() {
-    let validMethod = false;
+/**
+ * What the customer is paying, from the current choices:
+ *   payments    what is sent to the server (cash counted at the sale amount, never the change)
+ *   paid        total offered by the customer
+ *   remaining   still to pay (0 when covered)
+ *   change      cash to hand back
+ *   problem     why the sale cannot be completed yet, or ''
+ */
+POSPayments.computeSettlement = function() {
+    const total = POSPayments.state.total || 0;
+    const result = { total: total, payments: [], paid: 0, remaining: 0, change: 0, amountGiven: 0, problem: '' };
 
-    document.querySelectorAll('.payment-method-item').forEach(function(item) {
-        const methodSelect = item.querySelector('.payment-method-select');
-        const amountInput = item.querySelector('.payment-amount');
-        const methodValue = methodSelect ? methodSelect.value.trim() : '';
-        const amountValue = amountInput ? parseFloat(amountInput.value) || 0 : 0;
-
-        if (methodValue && amountValue > 0) {
-            validMethod = true;
-        }
-    });
-
-    // If no explicit payment method entered but user typed an amount in "Amount Given", treat it as valid cash
-    if (!validMethod) {
-        const amountGivenElement = document.getElementById('amountGiven');
-        const amountGiven = amountGivenElement ? parseFloat(amountGivenElement.value) || 0 : 0;
-        if (amountGiven > 0) validMethod = true;
+    if (total <= 0) {
+        result.problem = 'The cart is empty.';
+        return result;
     }
 
-    return validMethod;
-};
-
-POSPayments.updatePaymentSummary = function() {
-    const totals = POSPayments.getPaymentTotals();
-    const totalPayable = totals.totalPayable;
-    let totalPaid = totals.totalPaid;
-    const totalPaidElement = document.getElementById('totalPaid');
-    const remainingBalanceElement = document.getElementById('remainingBalance');
-    const amountGivenElement = document.getElementById('amountGiven');
-    const changeAmountElement = document.getElementById('changeAmount');
-    const balanceAlert = document.getElementById('balanceAlert');
-    const totalPaidAlert = document.getElementById('totalPaidAlert');
-    const requiredAmountAlert = document.getElementById('requiredAmountAlert');
-    const finalizeBtn = document.querySelector('#paymentModal [onclick="finalizePayment()"]');
-
-    if (!document.getElementById('totalPayable')) {
-        console.log('Total payable element not found');
-        return false;
-    }
-
-    const amountGiven = amountGivenElement ? parseFloat(amountGivenElement.value) || 0 : 0;
-
-    // Detect explicit cash method amount
-    let cashMethodAmount = 0;
-    document.querySelectorAll('.payment-method-item').forEach(function(item) {
-        const methodSelect = item.querySelector('.payment-method-select');
-        const amountInput = item.querySelector('.payment-amount');
-        const method = methodSelect ? (methodSelect.value || '').toLowerCase() : '';
-        const amt = amountInput ? parseFloat(amountInput.value) || 0 : 0;
-        if (method === 'cash' && amt > 0) cashMethodAmount += amt;
-    });
-
-    // When user types an Amount Given, prefer that as the cash tender; otherwise use cashMethodAmount.
-    // This ensures typing into Amount Given dynamically affects Remaining Balance even when a cash method is prefilled.
-    const sumOtherMethods = totalPaid - cashMethodAmount;
-    const cashAmountUsed = amountGiven > 0 ? amountGiven : cashMethodAmount;
-    const totalPaidIncludingAmountGiven = sumOtherMethods + cashAmountUsed;
-    const remainingBalance = Math.max(0, totalPayable - totalPaidIncludingAmountGiven);
-    const changeValue = Math.max(0, amountGiven - totalPayable);
-
-    if (totalPaidElement) {
-        totalPaidElement.textContent = POSApp.utils.formatCurrency(totalPaidIncludingAmountGiven);
-    }
-    if (remainingBalanceElement) {
-        remainingBalanceElement.textContent = POSApp.utils.formatCurrency(remainingBalance);
-    }
-
-    if (changeAmountElement) {
-        changeAmountElement.textContent = changeValue.toFixed(2);
-        changeAmountElement.style.color = '#0d6efd';
-    }
-
-    // Update state so receipt generation uses the most recent values
-    POSPayments.state.amountGiven = amountGiven;
-    POSPayments.state.changeAmount = changeValue;
-
-    if (balanceAlert) {
-        if (totalPaidIncludingAmountGiven < totalPayable) {
-            balanceAlert.style.display = 'block';
-            if (totalPaidAlert) {
-                totalPaidAlert.textContent = POSApp.utils.formatCurrency(totalPaidIncludingAmountGiven).replace('MWK ', '');
-            }
-            if (requiredAmountAlert) {
-                requiredAmountAlert.textContent = POSApp.utils.formatCurrency(totalPayable).replace('MWK ', '');
-            }
+    if (POSPayments.state.mode === 'single') {
+        const method = POSPayments.state.method;
+        if (method === 'cash') {
+            const input = document.getElementById('amountGiven');
+            const typed = input && input.value !== '' ? parseFloat(input.value) : null;
+            const given = typed === null ? total : POSPayments.round2(typed);   // empty = exact cash
+            result.amountGiven = given;
+            result.paid = given;
+            result.change = POSPayments.round2(Math.max(0, given - total));
+            result.remaining = POSPayments.round2(Math.max(0, total - given));
         } else {
-            balanceAlert.style.display = 'none';
+            result.amountGiven = total;
+            result.paid = total;
+        }
+        result.payments = [{ method: method, amount: total }];
+    } else {
+        let cash = 0;
+        POSPayments.state.splitLines.forEach(function(line) {
+            const amount = POSPayments.round2(line.amount);
+            if (amount > 0) {
+                result.payments.push({ method: line.method, amount: amount });
+                result.paid += amount;
+                if (line.method === 'cash') cash += amount;
+            }
+        });
+        result.paid = POSPayments.round2(result.paid);
+        const over = POSPayments.round2(result.paid - total);
+        result.remaining = Math.max(0, -over);
+        // Only cash can be handed back as change; anything else must match exactly
+        result.change = over > 0 ? Math.min(over, cash) : 0;
+        result.amountGiven = result.paid;
+        if (over > 0 && over > cash) {
+            result.problem = 'Only cash can be more than the amount due. Reduce the other amounts.';
+        } else if (result.payments.length < 2) {
+            result.problem = 'Enter amounts for at least two methods, or use one method.';
         }
     }
 
-    const hasPaymentMethod = POSPayments.hasValidPaymentMethod();
-    const isPaymentSufficient = totalPaidIncludingAmountGiven >= totalPayable;
-    const canFinalize = isPaymentSufficient && hasPaymentMethod;
+    if (!result.problem && result.remaining > 0) {
+        result.problem = 'Still to pay: ' + POSApp.utils.formatCurrency(result.remaining);
+    }
+    return result;
+};
 
-    if (finalizeBtn) {
-        finalizeBtn.disabled = !canFinalize;
+/** Refresh change / still-to-pay and the Complete button */
+POSPayments.updatePaymentSummary = function() {
+    if (!document.getElementById('payResult')) return false;
+    const s = POSPayments.computeSettlement();
+    const method = POSPayments.state.method;
+
+    POSPayments.state.amountGiven = s.amountGiven;
+    POSPayments.state.changeAmount = s.change;
+
+    const single = POSPayments.state.mode === 'single';
+    document.getElementById('payCashSection').classList.toggle('d-none', !(single && method === 'cash'));
+    document.getElementById('payOtherNote').classList.toggle('d-none', !(single && method !== 'cash'));
+    if (single && method !== 'cash') {
+        document.querySelector('#payOtherNote span').textContent =
+            'Confirm ' + POSApp.utils.formatCurrency(s.total) + ' was received by ' + POSPayments.methodLabel(method) + ' before completing the sale.';
     }
 
-    console.log(
-        'Payment summary updated - Total:', totalPayable.toFixed(2),
-        'Paid (methods):', totalPaid.toFixed(2),
-        'Amount Given:', amountGiven.toFixed(2),
-        'Total Paid (including given):', totalPaidIncludingAmountGiven.toFixed(2),
-        'Remaining:', remainingBalance.toFixed(2),
-        'Change:', changeValue.toFixed(2),
-        'ValidMethod:', hasPaymentMethod,
-        'Finalizable:', canFinalize
-    );
+    const result = document.getElementById('payResult');
+    const label = document.getElementById('payResultLabel');
+    const value = document.getElementById('payResultValue');
+    result.classList.remove('is-change', 'is-due', 'is-even');
+    if (s.remaining > 0) {
+        result.classList.add('is-due');
+        label.textContent = 'Still to pay';
+        value.textContent = POSApp.utils.formatCurrency(s.remaining);
+    } else if (s.change > 0) {
+        result.classList.add('is-change');
+        label.textContent = 'Change to give';
+        value.textContent = POSApp.utils.formatCurrency(s.change);
+    } else {
+        result.classList.add('is-even');
+        label.textContent = single && method === 'cash' ? 'Change' : 'Paid in full';
+        value.textContent = single && method === 'cash' ? POSApp.utils.formatCurrency(0) : POSPayments.methodLabel(single ? method : 'split');
+        if (!single) value.textContent = s.payments.length + ' methods';
+    }
+    document.getElementById('payPaidLine').innerHTML = s.paid > 0
+        ? '<span class="text-muted">Received</span><br><strong>' + POSApp.utils.formatCurrency(s.paid) + '</strong>' : '';
 
+    // Highlight the quick cash amount that matches what was typed
+    const input = document.getElementById('amountGiven');
+    document.querySelectorAll('.pay-quick-btn').forEach(function(btn) {
+        btn.classList.toggle('active', input && input.value !== '' && parseFloat(input.value) === parseFloat(btn.dataset.amount));
+    });
+
+    const btn = document.getElementById('payCompleteBtn');
+    const canComplete = !s.problem && !POSPayments.state.submitting;
+    btn.disabled = !canComplete;
+    document.getElementById('payCompleteText').textContent = POSPayments.state.submitting
+        ? 'Saving…'
+        : (s.problem && s.remaining <= 0 ? s.problem : 'Complete sale · ' + POSApp.utils.formatCurrency(s.total));
+    btn.title = s.problem || '';
     return true;
 };
 
-/**
- * Add new payment method
- */
-POSPayments.addPaymentMethod = function() {
-    console.log('Adding payment method...');
-    const paymentMethodsList = document.getElementById('paymentMethodsList');
-    const totalPayableElement = document.getElementById('totalPayable');
-    
-    if (!paymentMethodsList || !totalPayableElement) return;
-    
-    const totalPayable = parseFloat(totalPayableElement.textContent.replace('MWK ', '').replace(/,/g, '')) || 0;
-    let totalPaid = 0;
-    
-    document.querySelectorAll('.payment-amount').forEach(function(input) {
-        totalPaid += parseFloat(input.value) || 0;
-    });
-    
-    const remainingBalance = totalPayable - totalPaid;
-    
-    if (remainingBalance <= 0) {
-        alert('Total amount already covered');
-        return;
+POSPayments.setSubmitting = function(on) {
+    POSPayments.state.submitting = !!on;
+    const btn = document.getElementById('payCompleteBtn');
+    if (btn) {
+        btn.classList.toggle('is-saving', !!on);
+        if (on) btn.disabled = true;
     }
-    
-    const paymentMethodIndex = Date.now();
-    
-    const newMethodHtml = `
-        <div class="payment-method-item border rounded p-3 mb-2" data-payment-index="${paymentMethodIndex}">
-            <div class="row align-items-center">
-                <div class="col-md-4">
-                    <select class="form-select payment-method-select" onchange="updatePaymentSummary()">
-                        <option value="cash">Cash</option>
-                        <option value="card">Card</option>
-                        <option value="cheque">Cheque</option>
-                        <option value="bank_transfer">Bank Transfer</option>
-                        <option value="airtel_money">Airtel Money</option>
-                        <option value="mpamba">TNM Mpamba</option>
-                        <option value="national_bank">National Bank</option>
-                        <option value="standard_bank">Standard Bank</option>
-                        <option value="advance">Advance</option>
-                    </select>
-                </div>
-                <div class="col-md-6">
-                    <input type="number" class="form-control payment-amount" placeholder="Amount" min="0" step="1" value="${Number(remainingBalance.toFixed(2))}" onchange="updatePaymentSummary()">
-                </div>
-                <div class="col-md-2">
-                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="removePaymentMethod(${paymentMethodIndex})">
-                        <i class="bi bi-trash"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    paymentMethodsList.insertAdjacentHTML('beforeend', newMethodHtml);
-    POSPayments.updatePaymentSummary();
+    if (!on && document.getElementById('payResult')) POSPayments.updatePaymentSummary();
 };
 
-/**
- * Remove payment method
- */
+/** Wire up the payment window once */
+POSPayments.bindPaymentModal = function() {
+    const modal = document.getElementById('paymentModal');
+    if (!modal || modal.dataset.bound) return;
+    modal.dataset.bound = '1';
+
+    modal.addEventListener('click', function(e) {
+        // Only the tile buttons; the "More…" dropdown is handled on change (clicking it must not redraw it)
+        const tile = e.target.closest('button.pay-method');
+        if (tile) {
+            POSPayments.state.method = tile.dataset.method;
+            POSPayments.renderMethods();
+            POSPayments.updatePaymentSummary();
+            if (tile.dataset.method === 'cash') document.getElementById('amountGiven').focus();
+            return;
+        }
+        const quick = e.target.closest('.pay-quick-btn');
+        if (quick) {
+            const input = document.getElementById('amountGiven');
+            input.value = quick.dataset.amount;
+            POSPayments.updatePaymentSummary();
+            return;
+        }
+        if (e.target.closest('#paySplitToggle')) { POSPayments.showMode('split'); return; }
+        if (e.target.closest('#paySingleToggle')) { POSPayments.state.splitLines = []; POSPayments.showMode('single'); return; }
+        if (e.target.closest('#payAddLine')) {
+            const used = POSPayments.state.splitLines.map(function(l) { return l.method; });
+            const next = POSPayments.METHODS.find(function(m) { return used.indexOf(m.key) === -1; });
+            // Amounts typed so far stay; the new line takes what is left
+            POSPayments.state.splitLines.forEach(function(l) { l.auto = false; });
+            POSPayments.state.splitLines.push({ method: next ? next.key : 'cash', amount: '', auto: true });
+            POSPayments.fillAutoLine();
+            POSPayments.renderSplitLines();
+            POSPayments.updatePaymentSummary();
+            return;
+        }
+        const remove = e.target.closest('.pay-remove');
+        if (remove) {
+            POSPayments.state.splitLines.splice(+remove.dataset.line, 1);
+            // The last line takes up the slack again
+            POSPayments.state.splitLines.forEach(function(l, i, all) { l.auto = i === all.length - 1; });
+            POSPayments.fillAutoLine();
+            POSPayments.renderSplitLines();
+            POSPayments.updatePaymentSummary();
+        }
+    });
+
+    modal.addEventListener('input', function(e) {
+        if (e.target.id === 'amountGiven') {
+            POSPayments.updatePaymentSummary();
+        } else if (e.target.classList.contains('payment-amount')) {
+            const line = POSPayments.state.splitLines[+e.target.dataset.line];
+            line.amount = e.target.value;
+            if (line.auto) {
+                // The cashier typed in the automatic line: it is theirs now
+                line.auto = false;
+                e.target.classList.remove('is-auto');
+            }
+            POSPayments.fillAutoLine();
+            POSPayments.updatePaymentSummary();
+        }
+    });
+    modal.addEventListener('change', function(e) {
+        if (e.target.classList.contains('pay-more-select')) {
+            POSPayments.state.method = e.target.value;
+            POSPayments.renderMethods();
+            POSPayments.updatePaymentSummary();
+            return;
+        }
+        if (e.target.classList.contains('payment-method-select')) {
+            POSPayments.state.splitLines[+e.target.dataset.line].method = e.target.value;
+            POSPayments.updatePaymentSummary();
+        }
+    });
+
+    // Enter completes the sale while the payment window is open (when it can be completed)
+    document.addEventListener('keydown', function(e) {
+        if (e.key !== 'Enter' || !modal.classList.contains('show') || e.target.matches('select, button, a')) return;
+        e.preventDefault();
+        const btn = document.getElementById('payCompleteBtn');
+        if (!btn.disabled) POSPayments.finalizePayment();
+    });
+
+    modal.addEventListener('shown.bs.modal', POSPayments.focusCash);
+};
+
+/** Put the cursor in "Cash received" so the cashier can type straight away */
+POSPayments.focusCash = function() {
+    const input = document.getElementById('amountGiven');
+    if (input && !input.closest('.d-none')) input.focus();
+};
+
+/** Kept for code that still calls them */
+POSPayments.addPaymentMethod = function() { POSPayments.showMode('split'); };
 POSPayments.removePaymentMethod = function(index) {
-    const methodElement = document.querySelector('[data-payment-index="' + index + '"]');
-    if (methodElement) {
-        methodElement.remove();
-        POSPayments.updatePaymentSummary();
-    }
+    POSPayments.state.splitLines.splice(index, 1);
+    POSPayments.state.splitLines.forEach(function(l, i, all) { l.auto = i === all.length - 1; });
+    POSPayments.fillAutoLine();
+    POSPayments.renderSplitLines();
+    POSPayments.updatePaymentSummary();
 };
 
 /**
@@ -315,68 +441,21 @@ POSPayments.removePaymentMethod = function(index) {
  */
 POSPayments.finalizePayment = function() {
     console.log('Finalizing payment...');
-    
+
     try {
-        if (!POSPayments.updatePaymentSummary()) {
+        if (POSPayments.state.submitting) {
+            return false;   // already saving: ignore double clicks / Enter
+        }
+
+        const settlement = POSPayments.computeSettlement();
+        if (settlement.problem) {
+            POSPayments.updatePaymentSummary();
             return false;
         }
 
+        const totalPayable = settlement.total;
         const notesElement = document.getElementById('paymentNotes');
         const notes = notesElement ? notesElement.value : '';
-        const totalPayableElement = document.getElementById('totalPayable');
-        const balanceAlert = document.getElementById('balanceAlert');
-        const totalPaidAlert = document.getElementById('totalPaidAlert');
-        const requiredAmountAlert = document.getElementById('requiredAmountAlert');
-
-        if (!totalPayableElement) {
-            alert('Error: Total amount not found');
-            return false;
-        }
-
-        const totalPayable = parseFloat(totalPayableElement.textContent.replace('MWK ', '').replace(/,/g, '')) || 0;
-        let totalPaid = 0;
-        document.querySelectorAll('.payment-amount').forEach(function(input) {
-            totalPaid += parseFloat(input.value) || 0;
-        });
-
-        // Detect explicit cash method amount to avoid double-count
-        let cashMethodAmount = 0;
-        document.querySelectorAll('.payment-method-item').forEach(function(item) {
-            const methodSelect = item.querySelector('.payment-method-select');
-            const amountInput = item.querySelector('.payment-amount');
-            const method = methodSelect ? (methodSelect.value || '').toLowerCase() : '';
-            const amt = amountInput ? parseFloat(amountInput.value) || 0 : 0;
-            if (method === 'cash' && amt > 0) cashMethodAmount += amt;
-        });
-
-        const amountGivenElement = document.getElementById('amountGiven');
-        const amountGiven = amountGivenElement ? parseFloat(amountGivenElement.value) || 0 : 0;
-
-        const sumOtherMethods = totalPaid - cashMethodAmount;
-        const cashAmountUsed = amountGiven > 0 ? amountGiven : cashMethodAmount;
-        const totalPaidIncludingAmountGiven = sumOtherMethods + cashAmountUsed;
-        const paymentShortage = totalPayable - totalPaidIncludingAmountGiven;
-
-        const hasPaymentMethod = POSPayments.hasValidPaymentMethod();
-
-        if (!hasPaymentMethod) {
-            alert('Please select at least one payment method and enter an amount before completing payment.');
-            return false;
-        }
-
-        if (paymentShortage > 0) {
-            if (balanceAlert) {
-                balanceAlert.style.display = 'block';
-            }
-            if (totalPaidAlert) {
-                totalPaidAlert.textContent = POSApp.utils.formatCurrency(totalPaidIncludingAmountGiven).replace('MWK ', '');
-            }
-            if (requiredAmountAlert) {
-                requiredAmountAlert.textContent = POSApp.utils.formatCurrency(totalPayable).replace('MWK ', '');
-            }
-            alert('Payment incomplete. Remaining balance: MWK ' + paymentShortage.toFixed(2));
-            return false;
-        }
 
         const paymentData = {
             // Unique per sale, even across tills; the server uses it to ignore a repeated upload
@@ -386,26 +465,12 @@ POSPayments.finalizePayment = function() {
             payment_status: 'paid',
             notes: notes,
             total_amount: totalPayable,
-            payments: []
+            payments: settlement.payments
         };
-        
-        document.querySelectorAll('.payment-method-item').forEach(function(item, index) {
-            const methodSelect = item.querySelector('.payment-method-select');
-            const amountInput = item.querySelector('.payment-amount');
-            
-            if (methodSelect && amountInput) {
-                const method = methodSelect.value;
-                const amount = parseFloat(amountInput.value) || 0;
-                
-                if (method && amount > 0) {
-                    paymentData.payments.push({
-                        method: method,
-                        amount: amount
-                    });
-                }
-            }
-        });
-        
+        POSPayments.state.amountGiven = settlement.amountGiven;
+        POSPayments.state.changeAmount = settlement.change;
+        POSPayments.setSubmitting(true);
+
         const isSplitPayment = paymentData.payments.length > 1;
         
         const requestData = {
@@ -427,11 +492,13 @@ POSPayments.finalizePayment = function() {
         // No connection at all: save the sale on this device straight away
         if (window.POSOffline && POSOffline.isOffline()) {
             POSPayments.completeOffline(paymentData, requestData);
+            POSPayments.setSubmitting(false);
             return;
         }
 
         const csrfToken = POSApp.utils.getCsrfToken();
         if (!csrfToken) {
+            POSPayments.setSubmitting(false);
             alert('Error: Security token not found');
             return;
         }
@@ -456,11 +523,11 @@ POSPayments.finalizePayment = function() {
                     unreachable.unreachable = true;
                     throw unreachable;
                 }
-                return response.json().then(function(errorData) {
-                    const serverMessage = errorData && errorData.error ? errorData.error : response.statusText;
-                    throw new Error('Server error: ' + serverMessage + ' (' + response.status + ')');
-                }).catch(function() {
-                    throw new Error('Network response was not ok - Status: ' + response.status + ' ' + response.statusText);
+                // Keep the server's reason (e.g. "Insufficient stock for product: ...") for the cashier
+                return response.json().catch(function() { return {}; }).then(function(errorData) {
+                    const refused = new Error(errorData && errorData.error ? errorData.error : 'The server could not save the sale (' + response.status + ').');
+                    refused.refused = true;
+                    throw refused;
                 });
             }
             return response.json();
@@ -478,7 +545,7 @@ POSPayments.finalizePayment = function() {
 
             } else {
                 console.error('Error saving sale:', data.error);
-                alert('Error saving sale: ' + data.error);
+                alert('Sale not completed: ' + data.error);
             }
         })
         .catch(function(error) {
@@ -491,11 +558,17 @@ POSPayments.finalizePayment = function() {
                 POSPayments.completeOffline(paymentData, requestData);
                 return;
             }
-            console.error('Network error during finalization:', error);
-            alert('Network error during finalization: ' + error.message + '. Please check your connection and try again.');
+            console.error('Sale not completed:', error);
+            alert(error.refused
+                ? 'Sale not completed: ' + error.message
+                : 'Sale not completed: ' + error.message + '. Please check your connection and try again.');
+        })
+        .finally(function() {
+            POSPayments.setSubmitting(false);
         });
         
     } catch (e) {
+        POSPayments.setSubmitting(false);
         console.error('Error finalizing payment:', e);
         alert('Error processing payment. Please try again.');
     }
@@ -824,3 +897,11 @@ POSPayments.clearCartAfterPayment = function() {
         console.error('Cart module not available for clearing');
     }
 };
+
+// app.js starts before this file has loaded, so wire up the payment window here as well
+// (bindPaymentModal only runs once)
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', POSPayments.bindPaymentModal);
+} else {
+    POSPayments.bindPaymentModal();
+}

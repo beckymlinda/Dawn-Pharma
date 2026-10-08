@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
 
@@ -11,6 +12,8 @@ use Illuminate\Support\Facades\Log;
  */
 class IntegrityEvent extends Model
 {
+    use BelongsToTenant;
+
     protected $fillable = [
         'type', 'severity', 'user_id', 'register_id', 'sale_id', 'invoice_no', 'product_id',
         'amount', 'description', 'details', 'ip_address',

@@ -30,6 +30,9 @@
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
+        
+        <env name="TENANCY_DEFAULT_SLUG" value="test"/>
+        <env name="PLATFORM_SETUP_TOKEN" value="test-setup-token-0123456789"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
     </php>
 </phpunit>

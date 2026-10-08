@@ -49,6 +49,7 @@ class AuthenticationTest extends TestCase
         $response = $this->actingAs($user)->post('/logout');
 
         $this->assertGuest();
-        $response->assertRedirect('/');
+        // Back to the shop's own link, so staff can log in again straight away
+        $response->assertRedirect($this->tenant->url());
     }
 }

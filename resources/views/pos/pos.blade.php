@@ -209,99 +209,84 @@
 </div>
 
 
-<!-- Payment Modal -->
-<div class="modal fade" id="paymentModal" tabindex="-1">
-  <div class="modal-dialog modal-xl">
-    <div class="modal-content">
-      <div class="modal-header bg-success text-white py-2">
-        <h5 class="modal-title fw-bold">Complete Payment</h5>
-        <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body py-2">
-        <!-- Payment Methods List -->
-        <div id="paymentMethodsList" class="mb-3">
-          <!-- First Payment Method (Always Visible) -->
-          <div class="payment-method-item border rounded p-3 mb-2" data-payment-index="0">
-            <div class="row g-3">
-              <div class="col-md-5">
-                <label class="form-label fw-semibold small">Payment Method:*</label>
-                <select class="form-select form-select-sm payment-method-select" data-index="0">
-                  <option value="">Select Payment Method</option>
-                  <option value="cash">Cash</option>
-                  <option value="card">Card</option>
-                  <option value="cheque">Cheque</option>
-                  <option value="bank_transfer">Bank Transfer</option>
-                  <option value="airtel_money">Airtel Money</option>
-                  <option value="mpamba">TNM Mpamba</option>
-                  <option value="national_bank">National Bank</option>
-                  <option value="standard_bank">Standard Bank</option>
-                  <option value="advance">Advance</option>
-                </select>
-              </div>
-              <div class="col-md-4">
-                <label class="form-label fw-semibold small">Amount:*</label>
-                <input type="number" class="form-control form-control-sm payment-amount" data-index="0" step="1" placeholder="0">
-              </div>
-              <div class="col-md-3">
-                <label class="form-label fw-semibold small">&nbsp;</label>
-                <div>
-                  <button type="button" class="btn btn-sm btn-outline-danger remove-payment" data-index="0" style="display: none;">
-                    <i class="bi bi-trash"></i> Remove
-                  </button>
-                </div>
-              </div>
-            </div>
+<!-- Payment Modal: amount due on the left, how the customer pays on the right -->
+<div class="modal fade" id="paymentModal" tabindex="-1" aria-labelledby="paymentModalTitle" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-fullscreen-sm-down">
+    <div class="modal-content pay-modal">
+      <div class="row g-0 h-100">
+
+        <!-- Amount due + what is being bought -->
+        <div class="col-md-5 pay-summary">
+          <div class="d-flex justify-content-between align-items-start">
+            <div class="pay-summary-label">Amount due</div>
+            <button type="button" class="btn-close btn-close-white d-md-none" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
+          <div class="pay-due" id="payDue">MWK 0.00</div>
+          <div class="pay-summary-meta" id="payItemCount">0 items</div>
+          <div class="pay-items" id="payItems" aria-label="Items in this sale"></div>
         </div>
 
-        <!-- Add Payment Method Button -->
-        <div class="text-center mb-3">
-          <button type="button" class="btn btn-outline-primary" onclick="addPaymentMethod()">
-            <i class="bi bi-plus-circle"></i> Add Payment Method
+        <!-- Payment -->
+        <div class="col-md-7 pay-body">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <h5 class="modal-title fw-bold mb-0 me-auto" id="paymentModalTitle">Payment</h5>
+            <!-- Always visible at the top: pay with more than one method -->
+            <button type="button" class="btn btn-sm pay-split-toggle" id="paySplitToggle">
+              <i class="bi bi-diagram-2 me-1"></i> Split payment
+            </button>
+            <button type="button" class="btn-close d-none d-md-block" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+
+          <div class="pay-scroll">
+          <!-- Single payment -->
+          <div id="paySingle">
+            <div class="pay-label">Payment method</div>
+            <div class="pay-methods" id="payMethods" role="radiogroup" aria-label="Payment method"></div>
+
+            <!-- Cash: what the customer hands over, and the change -->
+            <div id="payCashSection" class="mt-2">
+              <label for="amountGiven" class="pay-label">Cash received</label>
+              <div class="input-group input-group-lg">
+                <span class="input-group-text">MWK</span>
+                <input type="number" id="amountGiven" class="form-control pay-cash-input" min="0" step="1" inputmode="decimal" placeholder="Exact amount" autocomplete="off">
+              </div>
+              <div class="pay-quick" id="payQuickCash" aria-label="Quick amounts"></div>
+            </div>
+
+            <div id="payOtherNote" class="pay-note mt-2 d-none">
+              <i class="bi bi-info-circle me-1"></i> <span>Confirm the payment was received before completing the sale.</span>
+            </div>
+
+          </div>
+
+          <!-- Split payment -->
+          <div id="paySplit" class="d-none">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <div class="pay-label mb-0">Split payment</div>
+              <button type="button" class="btn btn-link btn-sm px-0" id="paySingleToggle">Use one method</button>
+            </div>
+            <div id="paymentMethodsList"></div>
+            <div class="small text-muted mb-2">Type the first amount; the rest goes on the next method automatically.</div>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="payAddLine"><i class="bi bi-plus-lg me-1"></i> Add another method</button>
+          </div>
+          </div>
+
+          <div class="pay-footer">
+          <!-- Result: change / still to pay -->
+          <div class="pay-result" id="payResult" aria-live="polite">
+            <div>
+              <div class="pay-result-label" id="payResultLabel">Change</div>
+              <div class="pay-result-value" id="payResultValue">MWK 0.00</div>
+            </div>
+            <div class="text-end small" id="payPaidLine"></div>
+          </div>
+
+          <button type="button" class="btn pay-complete w-100" id="payCompleteBtn" onclick="finalizePayment()">
+            <i class="bi bi-check2-circle me-1"></i> <span id="payCompleteText">Complete sale</span>
           </button>
-        </div>
-
-        <!-- Payment Summary -->
-        <div class="card border-0 shadow-sm mt-3" style="background: linear-gradient(to right, #f8fafc, #f1f5f9);">
-          <div class="card-body">
-            <h6 class="card-title fw-bold text-secondary mb-3">Payment Summary</h6>
-            <div class="row mb-3">
-              <div class="col-md-6">
-                <small class="text-muted fw-semibold">Total Paid:</small>
-                <h4 class="text-success fw-bold mb-0">MWK <span id="totalPaid">0.00</span></h4>
-              </div>
-              <div class="col-md-6">
-                <small class="text-muted fw-semibold">Remaining Balance:</small>
-                <h4 class="text-danger fw-bold mb-0">MWK <span id="remainingBalance">0.00</span></h4>
-              </div>
-            </div>
-            
-            <div class="row mt-3 border-top pt-3" id="cashDetailsSection" style="background-color: #e0f2fe; border-radius: 8px; padding: 10px;">
-              <div class="col-md-5">
-                <label class="form-label text-dark fw-bold" style="font-size: 1.1rem;">Amount Given:</label>
-                <input type="number" id="amountGiven" class="form-control form-control-lg border-primary shadow-sm" placeholder="0" step="1" oninput="updatePaymentSummary()" style="height: 60px; font-size: 1.5rem; font-weight: bold; width: 90%;">
-              </div>
-              <div class="col-md-7 d-flex flex-column justify-content-center">
-                <label class="form-label text-dark fw-bold" style="font-size: 1.1rem;">Change To Give:</label>
-                <h2 class="text-primary fw-bold mb-0" style="font-size: 2.5rem; text-shadow: 1px 1px 2px rgba(0,0,0,0.1);">MWK <span id="changeAmount">0.00</span></h2>
-              </div>
-            </div>
+          <div class="text-center small text-muted mt-2 d-none d-md-block pay-hint">Press <kbd>Enter</kbd> to complete · <kbd>Esc</kbd> to go back</div>
           </div>
         </div>
-
-
-        <!-- Balance Alert -->
-        <div id="balanceAlert" class="alert alert-warning" style="display: none;">
-          <i class="bi bi-exclamation-triangle"></i>
-          <strong>Payment Incomplete!</strong> Total paid (<span id="totalPaidAlert">0.00</span>) does not match the required amount (<span id="requiredAmountAlert">0.00</span>). Please add more payment methods or adjust amounts.
-        </div>
-      </div>
-      <div class="modal-footer">
-
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-success" onclick="finalizePayment()">
-          <i class="bi bi-check-circle"></i> Complete Payment
-        </button>
       </div>
     </div>
   </div>

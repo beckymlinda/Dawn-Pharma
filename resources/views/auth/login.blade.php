@@ -10,12 +10,30 @@
     <form method="POST" action="{{ route('login') }}">
         @csrf
 
+        <!-- Shop: asked only when this browser has not opened a shop link -->
+        @if(tenant())
+            <p class="small text-muted text-center mb-3">
+                Logging in to <strong>{{ tenant()->name }}</strong>.
+                <a href="#" onclick="document.getElementById('shopField').classList.remove('d-none'); this.parentElement.classList.add('d-none'); return false;">Not your shop?</a>
+            </p>
+        @endif
+        <div class="mb-3 {{ tenant() && !$errors->has('shop') ? 'd-none' : '' }}" id="shopField">
+            <label for="shop" class="form-label small fw-bold text-muted">Shop code</label>
+            <div class="input-group">
+                <span class="input-group-text bg-light border-end-0"><i class="fas fa-store text-muted"></i></span>
+                <input id="shop" class="form-control border-start-0 bg-light" type="text" name="shop" value="{{ old('shop') }}"
+                       {{ tenant() ? '' : 'required autofocus' }} autocomplete="organization" autocapitalize="none" spellcheck="false" placeholder="e.g. area25" />
+            </div>
+            <div class="form-text small">The last part of your shop's link, e.g. {{ url('/') }}/<strong>area25</strong></div>
+            <x-input-error :messages="$errors->get('shop')" class="mt-2 text-danger small" />
+        </div>
+
         <!-- Email Address -->
         <div class="mb-3">
             <label for="email" class="form-label small fw-bold text-muted">Email Address</label>
             <div class="input-group">
                 <span class="input-group-text bg-light border-end-0"><i class="fas fa-envelope text-muted"></i></span>
-                <input id="email" class="form-control border-start-0 bg-light" type="email" name="email" value="{{ old('email') }}" required autofocus autocomplete="username" placeholder="name@example.com" />
+                <input id="email" class="form-control border-start-0 bg-light" type="email" name="email" value="{{ old('email') }}" required {{ tenant() ? 'autofocus' : '' }} autocomplete="username" placeholder="name@example.com" />
             </div>
             <x-input-error :messages="$errors->get('email')" class="mt-2 text-danger small" />
         </div>

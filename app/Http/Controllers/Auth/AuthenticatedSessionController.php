@@ -36,12 +36,21 @@ class AuthenticatedSessionController extends Controller
      */
     public function destroy(Request $request): RedirectResponse
     {
+        // Where to go afterwards: platform admins (and support sessions) back to the
+        // admin portal, shop staff back to their shop's login
+        $toPortal = $request->user()?->is_platform_admin || $request->session()->has('impersonated_by');
+        $shop = tenant();
+
         Auth::guard('web')->logout();
 
         $request->session()->invalidate();
 
         $request->session()->regenerateToken();
 
-        return redirect('/');
+        if ($toPortal) {
+            return redirect()->route('platform.login');
+        }
+
+        return $shop ? redirect($shop->url()) : redirect()->route('login');
     }
 }

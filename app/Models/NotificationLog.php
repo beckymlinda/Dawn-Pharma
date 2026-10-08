@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 
 class NotificationLog extends Model
 {
+    use BelongsToTenant;
+
     protected $fillable = ['type', 'register_id', 'recipients', 'subject', 'status', 'error', 'triggered_by'];
 
     public function register()

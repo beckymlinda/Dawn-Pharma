@@ -13,7 +13,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // exists:/unique: validation rules only see the current shop's rows
+        $this->app->extend('validation.presence', fn ($verifier, $app) => new \App\Validation\TenantPresenceVerifier($app['db']));
     }
 
 

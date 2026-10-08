@@ -164,6 +164,19 @@
         </div>
         @endif
 
+        <!-- Billing: the shop's subscription, with days left -->
+        @if(tenant() && (auth()->user()->hasRole('admin') || auth()->user()->hasRole('super_admin')))
+            @php($billingDays = tenant()->daysLeft())
+            @php($billingTone = ['grace' => 'bg-danger', 'expired' => 'bg-danger', 'due_soon' => 'bg-warning text-dark'][tenant()->billingState()] ?? 'bg-light text-dark border')
+        <a href="{{ route('billing.index') }}"
+           class="list-group-item list-group-item-action p-3 d-flex justify-content-between align-items-center {{ request()->routeIs('billing.*') ? 'active' : '' }}">
+            <span><i class="bi bi-credit-card-2-front me-2"></i> Billing</span>
+            @if($billingDays !== null)
+                <span class="badge rounded-pill {{ $billingTone }}" title="Days of subscription left">{{ $billingDays >= 0 ? $billingDays . 'd left' : 'Overdue' }}</span>
+            @endif
+        </a>
+        @endif
+
         <!-- Expenses -->
         @if(auth()->user()->hasPermission('access_all_expenses'))
         <a href="{{ route('expenses.index') }}"
@@ -357,6 +370,25 @@
 
         <!-- Main Content -->
         <div class="content-container">
+            @if(session('impersonated_by'))
+                <div class="alert alert-dark alert-persistent d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3" role="status">
+                    <span><i class="bi bi-person-badge me-2"></i><strong>Support session:</strong> logged in as {{ auth()->user()->name }} by {{ session('impersonated_by') }}.</span>
+                    <form method="POST" action="{{ route('logout') }}" class="m-0">@csrf<button class="btn btn-sm btn-light">End support session</button></form>
+                </div>
+            @endif
+            @if(tenant() && in_array(tenant()->billingState(), ['due_soon', 'grace']) && (auth()->user()->hasRole('super_admin') || auth()->user()->hasRole('admin')))
+                @php($days = tenant()->daysLeft())
+                <div class="alert alert-warning alert-persistent mb-3" role="status">
+                    <i class="bi bi-calendar-x me-2"></i>
+                    @if(tenant()->billingState() === 'grace')
+                        <strong>Your subscription ended on {{ tenant()->paid_until->format('d M Y') }}.</strong>
+                        The system will stop working after {{ tenant()->blockedAfter()->format('d M Y') }} unless it is renewed. <a href="{{ route('billing.index') }}" class="alert-link">See billing</a>
+                    @else
+                        <strong>Your subscription {{ $days === 0 ? 'ends today' : 'ends in ' . $days . ' ' . ($days === 1 ? 'day' : 'days') }}</strong> ({{ tenant()->paid_until->format('d M Y') }}).
+                        Please renew to keep using the system. <a href="{{ route('billing.index') }}" class="alert-link">See billing</a>
+                    @endif
+                </div>
+            @endif
             @if(session('success'))
                 <div class="alert alert-success alert-dismissible fade show border-0 shadow-sm mb-4" role="alert">
                     <i class="bi bi-check-circle me-2"></i>

@@ -60,36 +60,31 @@ POSApp.utils = {
      * Show notification message
      */
     showNotification: function(message, type = 'info') {
-        const notification = document.createElement('div');
-        const isError = type === 'error' || message.includes('❌');
-        
-        notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
-        // Bottom-right, so messages never cover the header buttons
-        notification.style.cssText = isError 
-            ? 'bottom: 20px; right: 20px; z-index: 9999; min-width: 300px; max-width: calc(100vw - 40px); background-color: #dc3545 !important; color: white !important; border: 2px solid #c82333 !important; font-weight: 600;'
-            : 'bottom: 20px; right: 20px; z-index: 9999; min-width: 250px; max-width: calc(100vw - 40px);';
-        notification.setAttribute('role', isError ? 'alert' : 'status');
-        if (window.innerWidth < 576) {
-            // Phones: under the header, so it never covers the Pay button
-            notification.style.bottom = 'auto';
-            notification.style.top = '62px';
-            notification.style.left = '12px';
-            notification.style.right = '12px';
-            notification.style.minWidth = '0';
+        const isError = type === 'error' || type === 'danger' || message.includes('❌');
+        const isWarning = type === 'warning';
+
+        // One message at a time, so adding items quickly does not stack them
+        document.querySelectorAll('.pos-toast').forEach(function(old) { old.remove(); });
+
+        const toast = document.createElement('div');
+        toast.className = 'pos-toast' + (isError ? ' pos-toast-error' : isWarning ? ' pos-toast-warning' : '');
+        toast.setAttribute('role', isError ? 'alert' : 'status');
+        toast.textContent = message.replace('❌', '').trim();
+
+        if (isError || isWarning) {
+            // Needs reading: stays longer and can be closed
+            const close = document.createElement('button');
+            close.type = 'button';
+            close.className = 'pos-toast-close';
+            close.setAttribute('aria-label', 'Close');
+            close.innerHTML = '&times;';
+            close.onclick = function() { toast.remove(); };
+            toast.appendChild(close);
         }
-        
-        notification.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close ${isError ? 'btn-close-white' : ''}" data-bs-dismiss="alert"></button>
-        `;
-        
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.parentNode.removeChild(notification);
-            }
-        }, 3000);
+
+        document.body.appendChild(toast);
+        setTimeout(function() { toast.classList.add('hide'); }, isError ? 5000 : isWarning ? 3500 : 1500);
+        setTimeout(function() { toast.remove(); }, isError ? 5400 : isWarning ? 3900 : 1900);
     },
 
     /**

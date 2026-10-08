@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 
 class Expense extends Model
 {
+    use BelongsToTenant;
+
     /** Common running costs of a shop or pharmacy in Malawi */
     public const CATEGORIES = [
         'Rent',

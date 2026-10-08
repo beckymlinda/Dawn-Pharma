@@ -50,6 +50,7 @@ class IntegrityController extends Controller
         // Sales per user in the same period, to compare like with like
         $salesByUser = DB::table('sales')
             ->leftJoin('registers', 'registers.id', '=', 'sales.register_id')
+            ->where('sales.tenant_id', tenant()?->id)   // raw query: no automatic shop filter
             ->whereBetween('sales.created_at', [$from, $to])
             ->selectRaw('COALESCE(sales.user_id, registers.user_id) as uid, COUNT(*) as count, SUM(sales.total_amount) as total')
             ->groupBy('uid')

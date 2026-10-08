@@ -18,13 +18,16 @@ class AccessControlTest extends TestCase
         }
     }
 
-    public function test_maintenance_routes_need_super_admin(): void
+    public function test_server_setup_needs_the_secret_token(): void
     {
-        $this->get('/maintenance/migrate')->assertRedirect('/login');
+        // Old maintenance URLs are gone; even a shop's super admin cannot run server tasks
+        $owner = $this->userWithPermissions([], 'super_admin');
+        $this->actingAs($owner)->get('/maintenance/migrate')->assertNotFound();
 
-        $admin = $this->userWithPermissions(['view_user'], 'admin');
-        $this->actingAs($admin)->get('/maintenance/migrate')->assertForbidden();
-        $this->actingAs($admin)->get('/maintenance/clear-cache')->assertForbidden();
+        $this->get('/setup')->assertNotFound();
+        $this->get('/setup?token=wrong-token-0123456789')->assertNotFound();
+        $this->post('/setup/migrate?token=wrong-token-0123456789')->assertNotFound();
+        $this->get('/setup?token=test-setup-token-0123456789')->assertOk()->assertSee('Server setup');
     }
 
     public function test_user_without_a_role_cannot_reach_admin_pages(): void

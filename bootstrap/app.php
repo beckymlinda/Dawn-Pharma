@@ -7,6 +7,7 @@ use Illuminate\Foundation\Configuration\Middleware;
 // Load custom helpers
 require_once __DIR__ . '/../app/Helpers/RegisterHelper.php';
 require_once __DIR__ . '/../app/Helpers/SettingsHelper.php';
+require_once __DIR__ . '/../app/Helpers/TenancyHelper.php';
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -17,11 +18,19 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(prepend: [
             \Illuminate\Session\Middleware\StartSession::class,
+            // Which shop this request is for (chosen in this browser via the shop link)
+            \App\Http\Middleware\IdentifyTenant::class,
+        ], append: [
+            // Suspended or unpaid shops see the subscription page
+            \App\Http\Middleware\EnsureTenantIsActive::class,
         ]);
+        // Not logged in: the admin portal has its own login page
+        $middleware->redirectGuestsTo(fn (\Illuminate\Http\Request $request) => $request->is('platform', 'platform/*') ? '/platform/login' : route('login'));
         $middleware->alias([
             'permission' => \App\Http\Middleware\CheckPermission::class,
             'role' => \App\Http\Middleware\CheckRole::class,
             'log.activity' => \App\Http\Middleware\LogUserActivity::class,
+            'platform' => \App\Http\Middleware\EnsurePlatformAdmin::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

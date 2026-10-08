@@ -15,6 +15,10 @@ return [
 
     'name' => env('APP_NAME', 'Laravel'),
 
+    // Token for the /setup page (run migrations, first platform admin) on hosting
+    // without a terminal. Leave empty to switch the page off.
+    'setup_token' => env('PLATFORM_SETUP_TOKEN', ''),
+
     /*
     |--------------------------------------------------------------------------
     | Application Environment
