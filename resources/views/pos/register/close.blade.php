@@ -1,303 +1,154 @@
 @extends('layouts.app')
 
+@section('title', 'Close register - ' . setting('system_name'))
+
 @section('content')
 @php
-    // Blind close: cashiers must count the drawer without seeing what the system expects
+    // Blind close: cashiers count the drawer without seeing what the system expects
     $isAdmin = auth()->user()->hasRole('admin') || auth()->user()->hasRole('super_admin');
     // One switch in Loss Prevention settings: when on, everyone must count the drawer and non-admins can't see the expected cash
     $countRequired = \App\Models\IntegrityEvent::cashCountRequired();
     $blind = $countRequired && !$isAdmin;
     $money = fn ($v, $prefix = 'MWK ') => $blind ? '••••••' : $prefix . number_format($v, 2);
+
+    // The shop's payment methods (Settings → Payment methods), cheque totals are kept under "cheques"
+    $methods = collect(\App\Helpers\PaymentMethods::definitions())
+        ->map(fn ($m) => ['key' => $m['key'] === 'cheque' ? 'cheques' : $m['key'], 'label' => $m['label'], 'icon' => $m['icon'], 'color' => $m['color']])
+        ->values()->all();
+    $methods[] = ['key' => 'cash_and_card', 'label' => 'Other', 'icon' => 'bi-intersect', 'color' => '#334155'];
+    // Anything else paid in this shift (e.g. a method since deleted) still gets a line
+    foreach (array_keys($counts) as $countKey) {
+        $key = substr($countKey, 6);
+        if ($key !== 'total_sales' && !in_array($key, array_column($methods, 'key'), true)) {
+            $methods[] = ['key' => $key, 'label' => ucwords(str_replace('_', ' ', $key)), 'icon' => 'bi-wallet', 'color' => '#7c3aed'];
+        }
+    }
+    $used = collect($methods)->filter(fn ($m) => ($counts['count_' . $m['key']] ?? 0) > 0)->values();
+    $methodTotal = max(1, $used->sum(fn ($m) => $totals['total_' . $m['key']] ?? 0));
+    $expectedCash = ($totals['total_cash'] ?? 0) + $register->opening_cash;
+    $minutesOpen = (int) $register->opened_at->diffInMinutes(now());
 @endphp
-<style>
-    :root {
-        --brand-blue: #0d6efd;
-        --brand-green: #28a745;
-        --brand-danger: #dc3545;
-        --glass-bg: rgba(255, 255, 255, 0.9);
-    }
 
-    .close-register-container {
-        max-width: 1000px;
-        margin: 2rem auto;
-        animation: fadeIn 0.5s ease-out;
-    }
-
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-
-    .stat-card {
-        border: none;
-        border-radius: 15px;
-        transition: transform 0.3s ease, shadow 0.3s ease;
-        overflow: hidden;
-        background: white;
-    }
-
-    .stat-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 10px 20px rgba(0,0,0,0.1) !important;
-    }
-
-    .stat-icon {
-        width: 50px;
-        height: 50px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 12px;
-        font-size: 1.5rem;
-        margin-bottom: 1rem;
-    }
-
-    .summary-table {
-        border-collapse: separate;
-        border-spacing: 0 8px;
-    }
-
-    .summary-table tr {
-        background: #f8f9fa;
-        border-radius: 10px;
-        transition: background 0.2s;
-    }
-
-    .summary-table tr:hover {
-        background: #f1f3f5;
-    }
-
-    .summary-table td, .summary-table th {
-        padding: 1rem;
-        border: none;
-    }
-
-    .summary-table tr td:first-child {
-        border-top-left-radius: 10px;
-        border-bottom-left-radius: 10px;
-    }
-
-    .summary-table tr td:last-child {
-        border-top-right-radius: 10px;
-        border-bottom-right-radius: 10px;
-    }
-
-    .method-badge {
-        font-weight: 600;
-        color: #495057;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-
-    .btn-close-register {
-        background: var(--brand-danger);
-        border: none;
-        padding: 1rem;
-        font-size: 1.1rem;
-        border-radius: 12px;
-        transition: all 0.3s;
-    }
-
-    .btn-close-register:hover {
-        background: #bd2130;
-        transform: scale(1.02);
-        box-shadow: 0 5px 15px rgba(220, 53, 69, 0.3);
-    }
-
-    /* Print styles */
-    @media print {
-        @page { margin: 0; }
-        body * {
-            visibility: hidden;
-        }
-        body {
-            background: white;
-            margin: 0;
-            padding: 0;
-        }
-        .close-register-container, .navbar, .sidebar {
-            display: none !important;
-        }
-        #printable-receipt, #printable-receipt * {
-            visibility: visible;
-        }
-        #printable-receipt {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 320px !important;
-            margin: 0;
-            padding: 20px 10px;
-            font-family: monospace;
-            font-size: 14px;
-            line-height: 1.4;
-            color: #000;
-        }
-        .receipt-table { width: 100%; border-collapse: collapse; }
-        .receipt-table td, .receipt-table th { padding: 4px 0; }
-    }
-    
-    /* Hide receipt on screen */
-    @media screen {
-        #printable-receipt {
-            display: none;
-        }
-    }
-</style>
-
-<div class="close-register-container px-3">
-    <!-- Header Section -->
-    <div class="d-flex justify-content-between align-items-end mb-4">
+<div class="close-register">
+    {{-- Header --}}
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
         <div>
-            <h2 class="fw-bold text-dark mb-1">Close Register</h2>
-            <p class="text-muted mb-0">Review sales and finalize your session for <span class="fw-bold">{{ auth()->user()->name }}</span></p>
+            <h3 class="fw-bold mb-1">Close register</h3>
+            <div class="text-muted small">
+                {{ auth()->user()->name }} · opened {{ $register->opened_at->format('d M Y, H:i') }}
+                · open {{ intdiv($minutesOpen, 60) }}h {{ str_pad($minutesOpen % 60, 2, '0', STR_PAD_LEFT) }}m
+            </div>
         </div>
-        <button onclick="window.print()" class="btn btn-primary shadow-sm px-4 py-2 rounded-pill fw-bold">
-            <i class="bi bi-printer me-2"></i> Print Z-Report
-        </button>
+        <div class="d-flex gap-2">
+            <a href="{{ route('pos.new') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i> Back to POS</a>
+            <button type="button" onclick="window.print()" class="btn btn-outline-primary"><i class="bi bi-printer me-1"></i> Print Z-report</button>
+        </div>
     </div>
 
-    <!-- Quick Stats Grid -->
+    {{-- Headline figures --}}
     <div class="row g-3 mb-4">
-        <div class="col-md-4">
-            <div class="card stat-card shadow-sm h-100">
-                <div class="card-body">
-                    <div class="stat-icon bg-primary text-white">
-                        <i class="bi bi-wallet2"></i>
-                    </div>
-                    <div class="text-muted small fw-bold text-uppercase">Opening Cash</div>
-                    <div class="h3 fw-bold mb-0">MWK {{ number_format($register->opening_cash, 2) }}</div>
-                    <div class="text-muted mt-2 small">Started at {{ $register->opened_at->format('H:i') }}</div>
-                </div>
-            </div>
+        <div class="col-6 col-xl-3">
+            <div class="cr-stat"><div class="cr-stat-label"><i class="bi bi-wallet2"></i> Opening float</div>
+                <div class="cr-stat-value">MWK {{ number_format($register->opening_cash, 2) }}</div></div>
         </div>
-        <div class="col-md-4">
-            <div class="card stat-card shadow-sm h-100">
-                <div class="card-body">
-                    <div class="stat-icon bg-success text-white">
-                        <i class="bi bi-cart-check"></i>
-                    </div>
-                    <div class="text-muted small fw-bold text-uppercase">Total Sales</div>
-                    <div class="h3 fw-bold mb-0">{{ $money($totals['total_sales']) }}</div>
-                    <div class="text-success mt-2 small">
-                        <i class="bi bi-arrow-up-short"></i> {{ $counts['count_total_sales'] ?? 0 }} Transactions
-                    </div>
-                </div>
-            </div>
+        <div class="col-6 col-xl-3">
+            <div class="cr-stat"><div class="cr-stat-label"><i class="bi bi-receipt"></i> Sales</div>
+                <div class="cr-stat-value">{{ $money($totals['total_sales']) }}</div>
+                <div class="cr-stat-sub">{{ $counts['count_total_sales'] ?? 0 }} {{ ($counts['count_total_sales'] ?? 0) == 1 ? 'sale' : 'sales' }}</div></div>
         </div>
-        <div class="col-md-4">
-            <div class="card stat-card shadow-sm h-100">
-                <div class="card-body">
-                    <div class="stat-icon bg-info text-white">
-                        <i class="bi bi-clock"></i>
-                    </div>
-                    <div class="text-muted small fw-bold text-uppercase">Time Open</div>
-                    <div class="h3 fw-bold mb-0">{{ (int)$register->opened_at->diffInHours(now()) }}h {{ (int)($register->opened_at->diffInMinutes(now()) % 60) }}m</div>
-                    <div class="text-muted mt-2 small">{{ $register->opened_at->format('d M Y') }}</div>
-                </div>
-            </div>
+        <div class="col-6 col-xl-3">
+            <div class="cr-stat"><div class="cr-stat-label"><i class="bi bi-cash-stack"></i> Cash sales</div>
+                <div class="cr-stat-value">{{ $money($totals['total_cash'] ?? 0) }}</div></div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="cr-stat cr-stat-strong"><div class="cr-stat-label"><i class="bi bi-safe"></i> Expected in drawer</div>
+                <div class="cr-stat-value">{{ $money($expectedCash) }}</div>
+                <div class="cr-stat-sub">{{ $blind ? 'Hidden: count the drawer yourself' : 'Opening float + cash sales' }}</div></div>
         </div>
     </div>
 
     <div class="row g-4">
-        <!-- Detailed Breakdown -->
+        {{-- Sales by payment method --}}
         <div class="col-lg-7">
-            <div class="card shadow-sm border-0 rounded-4 overflow-hidden">
-                <div class="card-header bg-white border-bottom py-3">
-                    <h5 class="fw-bold mb-0">Sales Breakdown</h5>
-                </div>
-                <div class="card-body">
-                    <table class="table summary-table mb-0">
-                        <thead>
-                            <tr class="text-muted small text-uppercase">
-                                <th>Method</th>
-                                <th class="text-center">Count</th>
-                                <th class="text-end">Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @php
-                                $methods = [
-                                    ['key' => 'cash', 'label' => 'Cash', 'icon' => 'bi-cash-stack', 'color' => 'text-success'],
-                                    ['key' => 'card', 'label' => 'Card', 'icon' => 'bi-credit-card', 'color' => 'text-primary'],
-                                    ['key' => 'airtel_money', 'label' => 'Airtel Money', 'icon' => 'bi-phone', 'color' => 'text-danger'],
-                                    ['key' => 'mpamba', 'label' => 'TNM Mpamba', 'icon' => 'bi-phone-fill', 'color' => 'text-success'],
-                                    ['key' => 'bank_transfer', 'label' => 'Bank Transfer', 'icon' => 'bi-bank', 'color' => 'text-info'],
-                                    ['key' => 'standard_bank', 'label' => 'Standard Bank', 'icon' => 'bi-building', 'color' => 'text-primary'],
-                                    ['key' => 'national_bank', 'label' => 'National Bank', 'icon' => 'bi-building-fill', 'color' => 'text-primary'],
-                                    ['key' => 'cheques', 'label' => 'Cheques', 'icon' => 'bi-file-earmark-check', 'color' => 'text-secondary'],
-                                    ['key' => 'advance', 'label' => 'Advance', 'icon' => 'bi-hourglass-split', 'color' => 'text-warning'],
-                                    ['key' => 'cash_and_card', 'label' => 'Split Payment', 'icon' => 'bi-intersect', 'color' => 'text-dark'],
-                                ];
-                            @endphp
-
-                            @foreach($methods as $method)
-                                @if(($counts['count_'.$method['key']] ?? 0) > 0)
-                                <tr>
-                                    <td>
-                                        <div class="method-badge">
-                                            <i class="bi {{ $method['icon'] }} {{ $method['color'] }} fs-5"></i>
-                                            <span>{{ $method['label'] }}</span>
-                                        </div>
-                                    </td>
-                                    <td class="text-center fw-bold">{{ $counts['count_'.$method['key']] }}</td>
-                                    <td class="text-end fw-bold">{{ $money($totals['total_'.$method['key']]) }}</td>
-                                </tr>
-                                @endif
-                            @endforeach
-
-                            @if(($counts['count_total_sales'] ?? 0) == 0)
-                            <tr>
-                                <td colspan="3" class="text-center py-5">
-                                    <i class="bi bi-inbox fs-1 text-muted d-block mb-2"></i>
-                                    <span class="text-muted">No sales recorded for this session.</span>
-                                </td>
-                            </tr>
-                            @endif
-                        </tbody>
-                    </table>
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold mb-3">Sales by payment method</h5>
+                    @forelse($used as $m)
+                        @php($amount = $totals['total_' . $m['key']] ?? 0)
+                        <div class="cr-method">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="fw-semibold"><i class="bi {{ $m['icon'] }} me-2" style="color: {{ $m['color'] }}"></i>{{ $m['label'] }}
+                                    <span class="text-muted fw-normal small ms-1">{{ $counts['count_' . $m['key']] }} {{ $counts['count_' . $m['key']] == 1 ? 'payment' : 'payments' }}</span></span>
+                                <span class="fw-bold">{{ $money($amount) }}</span>
+                            </div>
+                            @unless($blind)
+                                <div class="progress" style="height: 6px;" role="presentation">
+                                    <div class="progress-bar" style="width: {{ round($amount / $methodTotal * 100, 1) }}%; background: {{ $m['color'] }};"></div>
+                                </div>
+                            @endunless
+                        </div>
+                    @empty
+                        <div class="text-center text-muted py-5">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            No sales in this session.
+                        </div>
+                    @endforelse
                 </div>
             </div>
         </div>
 
-        <!-- Closing Actions -->
+        {{-- Count & close --}}
         <div class="col-lg-5">
-            <div class="card shadow-sm border-0 rounded-4 bg-light mb-4">
+            <div class="card border-0 shadow-sm rounded-4">
                 <div class="card-body p-4">
-                    <h5 class="fw-bold mb-4">Expected Balance</h5>
-                    
-                    <div class="d-flex justify-content-between mb-3 border-bottom pb-3">
-                        <span class="text-muted">Opening Cash</span>
-                        <span class="fw-bold">MWK {{ number_format($register->opening_cash, 2) }}</span>
-                    </div>
-                    <div class="d-flex justify-content-between mb-3 border-bottom pb-3">
-                        <span class="text-muted">Cash Sales Only</span>
-                        <span class="fw-bold">{{ $money($totals['total_cash'] ?? 0) }}</span>
-                    </div>
-                    <div class="d-flex justify-content-between p-3 bg-white rounded-3 shadow-sm mb-4">
-                        <span class="fw-bold text-dark fs-5">Expected in Drawer</span>
-                        <span class="fw-bold text-primary fs-5">{{ $money(($totals['total_cash'] ?? 0) + $register->opening_cash) }}</span>
-                    </div>
-
-                    <div class="alert alert-warning border-0 shadow-sm small mb-0">
-                        <i class="bi bi-info-circle-fill me-2"></i>
+                    <h5 class="fw-bold mb-1">Count &amp; close</h5>
+                    <p class="text-muted small mb-3">
                         @if($countRequired)
-                            Count all the cash in your drawer. You will enter the amount when you close the register.
+                            Count all notes and coins in the drawer, including the opening float. Do not copy a figure from the screen.
                         @else
-                            Confirm the amount in your drawer matches the expected total before closing.
+                            Check the drawer against the expected amount, then close the register.
                         @endif
-                    </div>
-                </div>
-            </div>
+                    </p>
 
-            <div class="d-grid gap-2">
-                <button type="button" class="btn btn-close-register text-white w-100 fw-bold" data-bs-toggle="modal" data-bs-target="#confirmCloseModal">
-                    <i class="bi bi-check2-circle me-2"></i> Confirm & Close Register
-                </button>
-                <a href="{{ route('pos.new') }}" class="btn btn-outline-secondary border-0 py-2">
-                    <i class="bi bi-arrow-left me-2"></i> Back to POS
-                </a>
+                    <form action="{{ route('register.update', $register->id) }}" method="POST" id="closeRegisterForm" class="m-0">
+                        @csrf
+                        @method('PATCH')
+
+                        <label for="countedCash" class="form-label fw-semibold small">
+                            Cash counted in drawer @if($countRequired)<span class="text-danger">*</span>@else<span class="text-muted fw-normal">(optional)</span>@endif
+                        </label>
+                        <div class="input-group input-group-lg mb-2">
+                            <span class="input-group-text">MWK</span>
+                            <input type="number" step="1" min="0" name="counted_cash" id="countedCash" inputmode="decimal" autocomplete="off"
+                                   class="form-control fw-bold @error('counted_cash') is-invalid @enderror"
+                                   value="{{ old('counted_cash') }}" placeholder="0" @if($countRequired) required @endif>
+                            @error('counted_cash')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+
+                        @unless($blind)
+                            {{-- Admins see the difference as they type --}}
+                            <div class="cr-variance d-none" id="crVariance" data-expected="{{ $expectedCash }}">
+                                <span id="crVarianceLabel">Difference</span><strong id="crVarianceValue"></strong>
+                            </div>
+                        @endunless
+
+                        <div id="offlinePendingWarning" class="alert alert-warning alert-persistent small mt-3 mb-0 d-none" role="alert">
+                            <i class="bi bi-cloud-upload me-1"></i>
+                            <strong><span id="offlinePendingCount">0</span> sale(s) made while offline</strong> are still on this device.
+                            The register can be closed once they are uploaded, so they are included in the Z-report.
+                            <div class="mt-2">
+                                <button type="button" class="btn btn-sm btn-outline-dark" id="offlineSyncNow">Upload now</button>
+                                <span class="small text-muted ms-2" id="offlineSyncStatus"></span>
+                            </div>
+                        </div>
+
+                        <button type="submit" id="closeRegisterSubmit" class="btn cr-close-btn w-100 mt-3">
+                            <i class="bi bi-lock me-1"></i> <span id="closeRegisterText">Close register</span>
+                        </button>
+                        <button type="button" id="closeRegisterCancel" class="btn btn-link w-100 text-muted mt-1 d-none">Cancel, keep the register open</button>
+                        <div class="text-center small text-muted mt-2" id="closeRegisterHint">The Z-report is emailed when the register is closed.</div>
+                    </form>
+                </div>
             </div>
         </div>
     </div>
@@ -375,96 +226,116 @@
     </div>
 </div>
 
-<!-- Confirm Close Register Modal -->
-<div class="modal fade" id="confirmCloseModal" tabindex="-1" aria-labelledby="confirmCloseModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg rounded-4">
-            <div class="modal-header border-0 pb-0">
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <form action="{{ route('register.update', $register->id) }}" method="POST" class="m-0">
-                @csrf
-                @method('PATCH')
-                <div class="modal-body text-center py-4">
-                    <div class="text-danger mb-3" style="font-size: 3.5rem;">
-                        <i class="bi bi-exclamation-triangle-fill"></i>
-                    </div>
-                    <h4 class="fw-bold text-dark mb-2">Close Register?</h4>
-                    <p class="text-muted px-3 mb-3">This will end your session and finalize all sales records for this shift.</p>
-
-                    @if($countRequired)
-                    <div class="text-start px-3">
-                        <label for="countedCash" class="form-label fw-semibold">Cash counted in drawer (MWK) <span class="text-danger">*</span></label>
-                        <input type="number" step="1" min="0" name="counted_cash" id="countedCash"
-                               class="form-control form-control-lg @error('counted_cash') is-invalid @enderror"
-                               value="{{ old('counted_cash') }}" placeholder="0" required>
-                        @error('counted_cash')
-                            <div class="invalid-feedback">{{ $message }}</div>
-                        @enderror
-                        <div class="form-text">Include the opening float. Count notes and coins; do not copy a figure from the screen.</div>
-                    </div>
-                    @endif
-
-                    <div id="offlinePendingWarning" class="alert alert-warning alert-persistent text-start mx-3 mt-3 mb-0 d-none" role="alert">
-                        <i class="bi bi-cloud-upload me-1"></i>
-                        <strong><span id="offlinePendingCount">0</span> sale(s) made while offline</strong> are still saved on this
-                        device and not yet uploaded. The register can be closed once they are uploaded, so they are
-                        included in the Z report.
-                        <div class="mt-2">
-                            <button type="button" class="btn btn-sm btn-outline-dark" id="offlineSyncNow">Upload now</button>
-                            <span class="small text-muted ms-2" id="offlineSyncStatus"></span>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer border-0 d-flex justify-content-center gap-2 pb-4 pt-0">
-                    <button type="button" class="btn btn-light px-4 py-2 rounded-pill fw-semibold" data-bs-dismiss="modal">
-                        No, Cancel
-                    </button>
-                    <button type="submit" id="closeRegisterSubmit" class="btn btn-danger px-4 py-2 rounded-pill fw-semibold">
-                        Yes, Close Register
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
 
 {{-- Sales made offline on this device must be uploaded before the shift is closed --}}
 <meta name="pos-user" content="{{ auth()->id() }}">
 <script src="{{ asset('js/pos/offline.js') }}?v={{ filemtime(public_path('js/pos/offline.js')) }}"></script>
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        var warning = document.getElementById('offlinePendingWarning');
-        var submit = document.getElementById('closeRegisterSubmit');
-        var status = document.getElementById('offlineSyncStatus');
+document.addEventListener('DOMContentLoaded', function () {
+    var form = document.getElementById('closeRegisterForm');
+    var submit = document.getElementById('closeRegisterSubmit');
+    var text = document.getElementById('closeRegisterText');
+    var hint = document.getElementById('closeRegisterHint');
+    var cancel = document.getElementById('closeRegisterCancel');
+    var warning = document.getElementById('offlinePendingWarning');
+    var status = document.getElementById('offlineSyncStatus');
+    var counted = document.getElementById('countedCash');
+    var armed = false, sending = false, pending = 0;
 
-        function refreshGuard() {
-            var pending = POSOffline.pendingCount();
-            submit.disabled = pending > 0;
-            if (!warning.isConnected) return;
-            document.getElementById('offlinePendingCount').textContent = pending;
-            warning.classList.toggle('d-none', pending === 0);
-            status.textContent = pending && POSOffline.state.lastError ? POSOffline.state.lastError : '';
+    // Offline sales still on this device block closing
+    function refreshGuard() {
+        pending = POSOffline.pendingCount();
+        document.getElementById('offlinePendingCount').textContent = pending;
+        warning.classList.toggle('d-none', pending === 0);
+        status.textContent = pending && POSOffline.state.lastError ? POSOffline.state.lastError : '';
+        if (!sending) submit.disabled = pending > 0;
+    }
+    document.getElementById('offlineSyncNow').addEventListener('click', function () {
+        status.textContent = 'Uploading…';
+        POSOffline.sync().then(refreshGuard);
+    });
+    POSOffline.sync().then(refreshGuard);
+    refreshGuard();
+    setInterval(refreshGuard, 3000);
+
+    // Difference between counted and expected cash (admins only; not shown in blind mode)
+    var variance = document.getElementById('crVariance');
+    if (variance && counted) {
+        counted.addEventListener('input', function () {
+            if (counted.value === '') { variance.classList.add('d-none'); return; }
+            var diff = Math.round((parseFloat(counted.value) || 0) - parseFloat(variance.dataset.expected));
+            variance.classList.remove('d-none', 'is-short', 'is-over', 'is-even');
+            variance.classList.add(diff < 0 ? 'is-short' : diff > 0 ? 'is-over' : 'is-even');
+            document.getElementById('crVarianceLabel').textContent = diff < 0 ? 'Short by' : diff > 0 ? 'Over by' : 'Matches the expected amount';
+            document.getElementById('crVarianceValue').textContent = diff === 0 ? '' : 'MWK ' + Math.abs(diff).toLocaleString('en-US');
+        });
+    }
+
+    // Two taps to close: the first asks for confirmation, the second closes
+    function disarm() {
+        armed = false;
+        submit.classList.remove('is-armed');
+        text.textContent = 'Close register';
+        hint.textContent = 'The Z-report is emailed when the register is closed.';
+        cancel.classList.add('d-none');
+    }
+    // Stays armed until closed or cancelled: no timer, so a slow second tap still closes
+    cancel.addEventListener('click', disarm);
+    form.addEventListener('submit', function (e) {
+        if (sending || pending > 0) { e.preventDefault(); return; }
+        if (!armed) {
+            e.preventDefault();
+            armed = true;
+            submit.classList.add('is-armed');
+            text.textContent = 'Yes, close the register';
+            hint.textContent = 'This ends the shift. Sales cannot be added to it afterwards.';
+            cancel.classList.remove('d-none');
+            return;
         }
-
-        document.getElementById('offlineSyncNow').addEventListener('click', function () {
-            status.textContent = 'Uploading…';
-            POSOffline.sync().then(refreshGuard);
-        });
-        document.getElementById('confirmCloseModal').addEventListener('show.bs.modal', function () {
-            POSOffline.sync().then(refreshGuard);
-        });
-
-        refreshGuard();
-        setInterval(refreshGuard, 3000);
+        sending = true;
+        cancel.classList.add('d-none');
+        submit.disabled = true;
+        submit.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Closing register…';
+        hint.textContent = 'Saving and sending the Z-report. Please wait.';
     });
+
+    if (counted && !counted.value) counted.focus();
+});
 </script>
-@if($errors->has('counted_cash'))
-<script>
-    // Re-open the close dialog so the cashier can enter the counted cash
-    document.addEventListener('DOMContentLoaded', function () {
-        new bootstrap.Modal(document.getElementById('confirmCloseModal')).show();
-    });
-</script>
-@endif
+
+<style>
+    .close-register { max-width: 1150px; margin: 0 auto; }
+    .cr-stat { background: #fff; border-radius: 14px; padding: 1rem 1.15rem; box-shadow: 0 1px 3px rgba(15, 23, 42, .08); height: 100%; }
+    .cr-stat-label { color: #64748b; font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; display: flex; gap: .4rem; align-items: center; }
+    .cr-stat-value { font-size: clamp(1.1rem, 1.7vw, 1.45rem); font-weight: 800; color: #0f172a; white-space: nowrap; margin-top: .25rem; }
+    .cr-stat-sub { color: #64748b; font-size: .8rem; }
+    .cr-stat-strong { background: linear-gradient(135deg, var(--theme-primary, #004d3d), var(--theme-secondary, #006b54)); }
+    .cr-stat-strong .cr-stat-label, .cr-stat-strong .cr-stat-sub { color: rgba(255, 255, 255, .8); }
+    .cr-stat-strong .cr-stat-value { color: #fff; }
+    .cr-method { padding: .65rem 0; border-bottom: 1px solid #f1f5f9; }
+    .cr-method:last-child { border-bottom: 0; }
+    .cr-variance { display: flex; justify-content: space-between; align-items: center; border-radius: 10px; padding: .55rem .85rem; font-size: .9rem; }
+    .cr-variance.is-short { background: #fef2f2; color: #b91c1c; }
+    .cr-variance.is-over { background: #fffbeb; color: #92400e; }
+    .cr-variance.is-even { background: #ecfdf5; color: #047857; }
+    .cr-close-btn, .cr-close-btn:hover, .cr-close-btn:focus, .cr-close-btn:active {
+        background: #b91c1c !important; border-color: #b91c1c !important; color: #fff !important;
+        font-weight: 700; padding: .8rem 1rem; border-radius: 12px;
+    }
+    .cr-close-btn:hover:not(:disabled) { filter: brightness(1.1); }
+    .cr-close-btn.is-armed, .cr-close-btn.is-armed:hover { background: #7f1d1d !important; border-color: #7f1d1d !important; box-shadow: 0 0 0 4px rgba(185, 28, 28, .25); }
+    .cr-close-btn:disabled { background: #94a3b8 !important; border-color: #94a3b8 !important; }
+
+    /* Print: only the Z-report */
+    @media print {
+        @page { margin: 0; }
+        body * { visibility: hidden; }
+        body { background: white; margin: 0; padding: 0; }
+        #printable-receipt, #printable-receipt * { visibility: visible; }
+        #printable-receipt { position: absolute; left: 0; top: 0; width: 320px !important; margin: 0; padding: 20px 10px; font-family: monospace; font-size: 14px; line-height: 1.4; color: #000; }
+        .receipt-table { width: 100%; border-collapse: collapse; }
+        .receipt-table td, .receipt-table th { padding: 4px 0; }
+    }
+    @media screen { #printable-receipt { display: none; } }
+</style>
 @endsection

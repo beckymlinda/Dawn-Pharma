@@ -7,6 +7,15 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    // The tables this migration gave a tenant_id (fixed here: tables added later, such as
+    // sms_recipients, are created with tenant_id and listed only in config/tenancy.php)
+    private const TABLES = [
+        'users', 'units', 'categories', 'brands', 'products', 'contacts', 'purchases', 'purchase_items',
+        'sales', 'sale_items', 'pos', 'locations', 'registers', 'stock_histories', 'roles',
+        'stock_adjustments', 'payments', 'activity_logs', 'settings', 'notification_recipients',
+        'notification_logs', 'integrity_events', 'expenses',
+    ];
+
     /** Values that must be unique within a shop (were unique across the whole database) */
     private const PER_SHOP_UNIQUE = [
         'users' => 'email',
@@ -42,7 +51,7 @@ return new class extends Migration
         });
 
         $withForeignKeys = in_array(DB::getDriverName(), ['mysql', 'mariadb']);
-        foreach (config('tenancy.tables') as $tableName) {
+        foreach (self::TABLES as $tableName) {
             Schema::table($tableName, function (Blueprint $table) use ($withForeignKeys) {
                 $table->unsignedBigInteger('tenant_id')->nullable()->after('id');
                 $table->index('tenant_id');
@@ -64,7 +73,7 @@ return new class extends Migration
                 'updated_at' => now(),
             ]);
 
-            foreach (config('tenancy.tables') as $tableName) {
+            foreach (self::TABLES as $tableName) {
                 DB::table($tableName)->whereNull('tenant_id')->update(['tenant_id' => $tenantId]);
             }
         }
@@ -87,7 +96,7 @@ return new class extends Migration
         }
 
         $withForeignKeys = in_array(DB::getDriverName(), ['mysql', 'mariadb']);
-        foreach (config('tenancy.tables') as $tableName) {
+        foreach (self::TABLES as $tableName) {
             Schema::table($tableName, function (Blueprint $table) use ($withForeignKeys) {
                 if ($withForeignKeys) {
                     $table->dropForeign(['tenant_id']);

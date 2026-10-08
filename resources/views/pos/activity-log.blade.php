@@ -28,7 +28,6 @@
           </div>
         </div>
       </main>
-      <footer class="app-footer">LightSuite - V6.4 | Copyright © 2026 All rights reserved.</footer>
     </div>
   </div>
 

@@ -305,9 +305,11 @@
                                         <a href="{{ route('sales.show', $sale->id) }}" class="action-btn view" title="View Details">
                                             <i class="bi bi-eye"></i>
                                         </a>
+                                        @if(auth()->user()->hasPermission('edit_pos_sell'))
                                         <a href="{{ route('sales.edit', $sale->id) }}" class="action-btn edit" title="Edit Sale">
                                             <i class="bi bi-pencil"></i>
                                         </a>
+                                        @endif
                                         @if(auth()->user()->hasPermission('delete_pos_sell'))
                                         <form action="{{ route('sales.destroy', $sale->id) }}" method="POST" class="d-inline m-0 p-0" onsubmit="return confirm('Are you sure you want to delete this transaction? This action will reverse inventory and is recorded in Loss Prevention.');">
                                             @csrf

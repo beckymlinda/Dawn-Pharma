@@ -1,4 +1,30 @@
 @extends('layouts.app')
+
+{{-- Helpers used below (declared first: they are conditional, so not hoisted) --}}
+@php
+if (!function_exists('getStatusColor')) {
+    function getStatusColor($status) {
+        $colors = [
+            'pending' => 'warning',
+            'ordered' => 'info',
+            'received' => 'success',
+            'completed' => 'primary'
+        ];
+        return $colors[$status] ?? 'secondary';
+    }
+}
+
+if (!function_exists('getPaymentStatusColor')) {
+    function getPaymentStatusColor($status) {
+        $colors = [
+            'due' => 'danger',
+            'partial' => 'warning',
+            'paid' => 'success'
+        ];
+        return $colors[$status] ?? 'secondary';
+    }
+}
+@endphp
 @section('content')
 
   <div class="app-wrapper">
@@ -83,30 +109,9 @@
           </div>
         </div>
       </main>
-      <footer class="app-footer">LightSuite - V6.4 | Copyright © 2026 All rights reserved.</footer>
     </div>
   </div>
 
-@php
-function getStatusColor($status) {
-    $colors = [
-        'pending' => 'warning',
-        'ordered' => 'info',
-        'received' => 'success',
-        'completed' => 'primary'
-    ];
-    return $colors[$status] ?? 'secondary';
-}
-
-function getPaymentStatusColor($status) {
-    $colors = [
-        'due' => 'danger',
-        'partial' => 'warning',
-        'paid' => 'success'
-    ];
-    return $colors[$status] ?? 'secondary';
-}
-@endphp
 
 <script>
 function deletePurchase(id) {

@@ -31,7 +31,8 @@ class BrandController extends Controller
 
     public function show(Brand $brand)
     {
-        return view('brands.show', compact('brand'));
+        // No separate details page: open it for editing
+        return redirect()->route('brands.edit', $brand);
     }
 
     public function edit(Brand $brand)

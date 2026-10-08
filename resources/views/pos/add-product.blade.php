@@ -333,10 +333,12 @@
                     <div class="p-3 rounded-3 bg-light border mt-4">
                         <h6 class="x-small fw-bold text-uppercase text-muted mb-2">Instructions:</h6>
                         <ul class="x-small text-muted mb-0 ps-3">
-                            <li>Ensure all required fields are filled.</li>
-                            <li>Dates are flexible (e.g., 2027-12-31 or 12/31/2027).</li>
-                            <li>Foreign keys (Category, Brand, etc.) will be matched by name.</li>
-                            <li>Existing products (matched by SKU or Name) will be skipped.</li>
+                            <li>Name and selling price are required on every row.</li>
+                            <li>Columns can be in any order; prices may include commas (12,500).</li>
+                            <li>Expiry dates: 31/12/2027 (day first), 2027-12-31 or 12/2027.</li>
+                            <li>Category, brand, unit and supplier are matched by name, or created.</li>
+                            <li>Products already in the shop (same SKU, or same name when there is no SKU) are skipped.</li>
+                            <li>From Excel: File &gt; Save As &gt; "CSV UTF-8 (Comma delimited)".</li>
                         </ul>
                     </div>
                 </div>

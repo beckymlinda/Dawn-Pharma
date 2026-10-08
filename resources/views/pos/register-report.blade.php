@@ -175,7 +175,7 @@
                     </td>
                     <td class="text-end">
                       <div class="fw-semibold">{{ $currency }} {{ number_format($register['total_card'] + $register['total_national_bank'] + $register['total_standard_bank'] + $register['total_bank_transfer'], 2) }}</div>
-                      <div class="x-small text-muted">Swipe/Transfer</div>
+                      <div class="x-small text-muted">Swipe/Transfer{{ $register['total_other'] > 0 ? ' · Other methods: ' . number_format($register['total_other'], 0) : '' }}</div>
                     </td>
                     <td class="text-end pe-4">
                       @php 
@@ -187,7 +187,8 @@
                                        $register['total_national_bank'] + 
                                        $register['total_standard_bank'] + 
                                        $register['total_airtel_money'] + 
-                                       $register['total_mpamba'];
+                                       $register['total_mpamba'] +
+                                       $register['total_other'];
                       @endphp
                       <div class="fw-bold text-primary">{{ $currency }} {{ number_format($registerTotal, 2) }}</div>
                     </td>

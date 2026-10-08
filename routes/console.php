@@ -23,3 +23,6 @@ Artisan::command('payments:resend-proof-emails', function () {
     }
 })->purpose('Retry proof-of-payment emails that could not be sent');
 Schedule::command('payments:resend-proof-emails')->everyTenMinutes()->withoutOverlapping();
+
+// Notification history (Recently Sent) older than 30 days is removed
+Schedule::command('model:prune', ['--model' => [App\Models\NotificationLog::class]])->dailyAt('23:45');

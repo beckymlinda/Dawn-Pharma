@@ -245,7 +245,7 @@ class POSController extends Controller
             ]);
             return response()->json([
                 'success' => false,
-                'error' => 'Validation failed: ' . implode(', ', $e->errors())
+                'error' => 'Validation failed: ' . implode(', ', \Illuminate\Support\Arr::flatten($e->errors()))
             ], 400);
         }
 
@@ -868,7 +868,7 @@ class POSController extends Controller
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'error' => 'Validation failed: ' . implode(', ', $e->errors())
+                'error' => 'Validation failed: ' . implode(', ', \Illuminate\Support\Arr::flatten($e->errors()))
             ], 400);
         } catch (\Illuminate\Database\QueryException $e) {
             DB::rollBack();
@@ -1041,19 +1041,8 @@ class POSController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->get();
 
-            // Calculate payment method totals
-            $paymentMethods = [
-                'cash' => 0,
-                'card' => 0,
-                'cheque' => 0,
-                'bank_transfer' => 0,
-                'advance' => 0,
-                'national_bank' => 0,
-                'standard_bank' => 0,
-                'airtel_money' => 0,
-                'mpamba' => 0,
-                'other' => 0
-            ];
+            // Calculate payment method totals (every method of this shop, including ones it added)
+            $paymentMethods = PaymentMethods::initializeTotals();
 
             $totalSales = 0;
             $totalRefund = 0;
@@ -1195,6 +1184,9 @@ class POSController extends Controller
                 'success' => true,
                 'sale' => $sale
             ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            // Not a sale of this shop
+            return response()->json(['success' => false, 'error' => 'Sale not found.'], 404);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,

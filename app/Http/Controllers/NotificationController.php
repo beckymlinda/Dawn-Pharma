@@ -7,6 +7,8 @@ use App\Models\NotificationLog;
 use App\Models\NotificationRecipient;
 use App\Models\Register;
 use App\Models\Setting;
+use App\Models\SmsRecipient;
+use App\Services\Sms\TumaSend;
 use App\Services\ZReportNotifier;
 use App\Services\ZReportService;
 use Illuminate\Http\Request;
@@ -38,7 +40,12 @@ class NotificationController extends Controller
         $enabled = ZReportNotifier::isEnabled();
         $latestRegister = Register::with('user')->orderByRaw('closed_at IS NULL')->latest('id')->first();
 
-        return view('notifications.index', compact('recipients', 'logs', 'enabled', 'latestRegister'));
+        $phones = SmsRecipient::with('addedBy')->orderBy('phone')->get();
+        $smsReady = TumaSend::isConfigured();
+        // Offer the pharmacy's own phone (System Settings) so adding it is one tap
+        $suggestedPhone = $phones->isEmpty() ? TumaSend::normalizePhone(setting('telephone')) : null;
+
+        return view('notifications.index', compact('recipients', 'logs', 'enabled', 'latestRegister', 'phones', 'smsReady', 'suggestedPhone'));
     }
 
     public function updateSettings(Request $request)
@@ -88,6 +95,76 @@ class NotificationController extends Controller
         $recipient->delete();
 
         return back()->with('success', "{$recipient->email} removed.");
+    }
+
+    public function storePhone(Request $request)
+    {
+        $this->authorizeAdmin();
+
+        $request->merge(['phone' => TumaSend::normalizePhone($request->input('phone')) ?? $request->input('phone')]);
+        $validated = $request->validate([
+            'phone' => ['required', 'regex:/^\+\d{9,15}$/', 'unique:sms_recipients,phone'],
+            'name' => 'nullable|string|max:255',
+        ], [
+            'phone.regex' => 'Enter a valid phone number, e.g. 0991 234 567 or 0881 234 567.',
+            'phone.unique' => 'This phone number is already in the list.',
+        ]);
+
+        $recipient = SmsRecipient::create($validated + ['added_by' => auth()->id()]);
+
+        return back()->with('success', "{$recipient->display_phone} will now receive Z reports by SMS.");
+    }
+
+    public function togglePhone(SmsRecipient $phone)
+    {
+        $this->authorizeAdmin();
+
+        $phone->update(['is_active' => !$phone->is_active]);
+
+        return back()->with('success', $phone->display_phone . ($phone->is_active ? ' resumed.' : ' paused.'));
+    }
+
+    public function destroyPhone(SmsRecipient $phone)
+    {
+        $this->authorizeAdmin();
+
+        $phone->delete();
+
+        return back()->with('success', "{$phone->display_phone} removed.");
+    }
+
+    /**
+     * Empty this shop's "Recently Sent" history (the global scope keeps other shops' logs).
+     */
+    public function clearLogs()
+    {
+        $this->authorizeAdmin();
+
+        $count = NotificationLog::query()->delete();
+
+        return back()->with('success', $count ? "Cleared {$count} sent " . ($count === 1 ? 'entry' : 'entries') . '.' : 'Nothing to clear.');
+    }
+
+    /**
+     * Text the latest Z report now to all active phone numbers.
+     */
+    public function sendTestSms(ZReportNotifier $notifier)
+    {
+        $this->authorizeAdmin();
+
+        $register = Register::orderByRaw('closed_at IS NULL')->latest('id')->first();
+        if (!$register) {
+            return back()->with('error', 'There are no registers yet to build a Z report from.');
+        }
+
+        $log = $notifier->sendSms($register, auth()->id());
+        if (!$log) {
+            return back()->with('error', 'Add a phone number first.');
+        }
+
+        return $log->status === 'sent'
+            ? back()->with('success', 'Z report SMS sent to ' . $log->recipients . '.' . ($log->error ? ' ' . $log->error : ''))
+            : back()->with('error', 'SMS failed: ' . $log->error);
     }
 
     /**

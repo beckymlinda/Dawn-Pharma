@@ -46,16 +46,10 @@
                     <label class="form-label small fw-bold text-white-50">Payment Method</label>
                     <select name="payment_method" class="form-select border-0 bg-white-10 text-white custom-select-dark">
                         <option value="">All Methods</option>
-                        <option value="cash" {{ request('payment_method') == 'cash' ? 'selected' : '' }}>Cash</option>
-                        <option value="card" {{ request('payment_method') == 'card' ? 'selected' : '' }}>Card</option>
-                        <option value="cheque" {{ request('payment_method') == 'cheque' ? 'selected' : '' }}>Cheque</option>
-                        <option value="bank_transfer" {{ request('payment_method') == 'bank_transfer' ? 'selected' : '' }}>Bank Transfer</option>
-                        <option value="advance" {{ request('payment_method') == 'advance' ? 'selected' : '' }}>Advance</option>
-                        <option value="airtel_money" {{ request('payment_method') == 'airtel_money' ? 'selected' : '' }}>Airtel Money</option>
-                        <option value="mpamba" {{ request('payment_method') == 'mpamba' ? 'selected' : '' }}>TNM Mpamba</option>
-                        <option value="national_bank" {{ request('payment_method') == 'national_bank' ? 'selected' : '' }}>National Bank</option>
-                        <option value="standard_bank" {{ request('payment_method') == 'standard_bank' ? 'selected' : '' }}>Standard Bank</option>
-                        <option value="other" {{ request('payment_method') == 'other' ? 'selected' : '' }}>Other</option>
+                        {{-- Every method, including ones switched off since, so past sales can still be found --}}
+                        @foreach(\App\Helpers\PaymentMethods::getDisplayNames() as $methodKey => $methodLabel)
+                            <option value="{{ $methodKey }}" @selected(request('payment_method') == $methodKey)>{{ $methodLabel }}</option>
+                        @endforeach
                     </select>
                 </div>
 
@@ -195,9 +189,19 @@
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end shadow border-0">
                                     <li><a class="dropdown-item" href="{{ route('sales.show', $s->id) }}"><i class="bi bi-eye me-2 text-primary"></i> View Details</a></li>
+                                    @if(auth()->user()->hasPermission('edit_pos_sell'))
                                     <li><a class="dropdown-item" href="{{ route('sales.edit', $s->id) }}"><i class="bi bi-pencil me-2 text-warning"></i> Edit Sale</a></li>
+                                    @endif
+                                    @if(auth()->user()->hasPermission('delete_pos_sell'))
                                     <li><hr class="dropdown-divider"></li>
-                                    <li><button class="dropdown-item text-danger"><i class="bi bi-trash me-2"></i> Void Sale</button></li>
+                                    <li>
+                                        <form action="{{ route('sales.destroy', $s->id) }}" method="POST" class="m-0"
+                                              onsubmit="return confirm('Delete sale {{ $s->invoice_no }}? Stock is returned and the deletion is recorded in Loss Prevention.');">
+                                            @csrf @method('DELETE')
+                                            <button type="submit" class="dropdown-item text-danger"><i class="bi bi-trash me-2"></i> Delete Sale</button>
+                                        </form>
+                                    </li>
+                                    @endif
                                 </ul>
                             </div>
                         </td>

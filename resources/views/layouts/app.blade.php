@@ -35,294 +35,157 @@
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
     <!-- Sidebar -->
-    <div class="border-end bg-white" id="sidebar-wrapper" style="width: 250px;">
-    
-    <div class="sidebar-heading border-bottom d-flex justify-content-between align-items-center">
-        <img src="{{ brand_logo_url() }}" alt="{{ setting('system_name') }}" style="height: 50px; width: auto; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));">
-        <span class="text-success">&bull;</span>
-    </div>
+    @php($sbUser = auth()->user())
+    @php($sbAdmin = $sbUser->hasRole('admin') || $sbUser->hasRole('super_admin'))
+    @php($sbProducts = $sbUser->hasPermission('view_product') || $sbUser->hasPermission('add_product') || $sbUser->hasPermission('view_category') || $sbUser->hasPermission('view_brand') || $sbUser->hasPermission('view_unit'))
+    @php($sbStock = $sbUser->hasPermission('view_stock_adjustments') || $sbUser->hasPermission('create_stock_adjustment'))
+    @php($sbExpenses = $sbUser->hasPermission('access_all_expenses'))
+    @php($sbReports = $sbUser->hasPermission('view_profit_loss_report') || $sbUser->hasPermission('view_register_report') || $sbUser->hasPermission('view_stock_report') || $sbUser->hasPermission('view_stock_expiry_report'))
+    @php($sbPeople = $sbUser->hasPermission('view_user') || $sbUser->hasPermission('view_role') || $sbAdmin)
+    @php($sbProductsOpen = request()->is('products*') || request()->is('units*') || request()->is('categories*') || request()->is('brands*'))
+    @php($sbStockOpen = request()->routeIs('stock-adjustments.*'))
+    @php($sbReportsOpen = request()->routeIs('reports.*') || request()->routeIs('stock.report'))
+    @php($sbHasLogo = brand_image_exists(setting('logo')))
+    <aside id="sidebar-wrapper" class="sb" aria-label="Main menu">
 
-    <div class="list-group list-group-flush">
-
-        <a href="{{ route('dashboard') }}" 
-           class="list-group-item list-group-item-action p-3 {{ request()->routeIs('dashboard') ? 'active' : '' }}">
-            <i class="bi bi-house me-2"></i> Home
-        </a>
-
-        
-        
-        <!-- PRODUCTS DROPDOWN -->
-        @if(auth()->user()->hasPermission('view_product') || auth()->user()->hasPermission('add_product') || auth()->user()->hasPermission('view_category') || auth()->user()->hasPermission('view_brand') || auth()->user()->hasPermission('view_unit'))
-        <a class="list-group-item list-group-item-action p-3 d-flex justify-content-between align-items-center"
-           data-bs-toggle="collapse"
-           href="#productsMenu"
-           role="button"
-           aria-expanded="{{ request()->is('products*') || request()->is('units*') || request()->is('categories*') || request()->is('brands*') ? 'true' : 'false' }}">
-            
-            <span><i class="bi bi-box-seam me-2"></i> Products</span>
-            <i class="bi bi-chevron-down small"></i>
-        </a>
-
-        <div class="collapse {{ request()->is('products*') || request()->is('units*') || request()->is('categories*') || request()->is('brands*') ? 'show' : '' }}" 
-             id="productsMenu">
-
-            @if(auth()->user()->hasPermission('view_product'))
-            <a href="{{ route('products.index') }}" 
-               class="list-group-item list-group-item-action ps-5 {{ request()->routeIs('products.*') ? 'active' : '' }}">
-                All Products
-            </a>
-            @endif
-
-            @if(auth()->user()->hasPermission('add_product'))
-            <a href="{{ route('products.create') }}" 
-               class="list-group-item list-group-item-action ps-5">
-                Add Product
-            </a>
-            @endif
-
-            @if(auth()->user()->hasPermission('view_unit'))
-            <a href="{{ route('units.index') }}" 
-               class="list-group-item list-group-item-action ps-5 {{ request()->routeIs('units.*') ? 'active' : '' }}">
-                Units
-            </a>
-            @endif
-
-            @if(auth()->user()->hasPermission('view_category'))
-            <a href="{{ route('categories.index') }}" 
-               class="list-group-item list-group-item-action ps-5 {{ request()->routeIs('categories.*') ? 'active' : '' }}">
-                Categories
-            </a>
-            @endif
-
-            @if(auth()->user()->hasPermission('view_brand'))
-            <a href="{{ route('brands.index') }}" 
-               class="list-group-item list-group-item-action ps-5 {{ request()->routeIs('brands.*') ? 'active' : '' }}">
-                Brands
-            </a>
-            @endif
-        </div>
-        @endif
-
-        <!-- END PRODUCTS DROPDOWN -->
-
-       
-        <!-- POS Screen -->
-        @if(auth()->user()->hasPermission('add_pos_sell'))
-        <a href="{{ route('pos.new') }}" 
-           class="list-group-item list-group-item-action p-3 {{ request()->routeIs('pos.new') ? 'active' : '' }}">
-            <i class="bi bi-cart-check me-2"></i> POS Screen
-        </a>
-        @endif
-
-        <!-- All Sales -->
-        @if(auth()->user()->hasPermission('view_pos_sell'))
-        <a href="{{ route('sales.index') }}" 
-           class="list-group-item list-group-item-action p-3 {{ request()->routeIs('sales.*') ? 'active' : '' }}">
-            <i class="bi bi-receipt me-2"></i> All Sales
-        </a>
-        @endif
-
-<!-- Stock Adjustments Dropdown -->
-        @if(auth()->user()->hasPermission('view_stock_adjustments') || auth()->user()->hasPermission('create_stock_adjustment'))
-        <a class="list-group-item list-group-item-action p-3 d-flex justify-content-between align-items-center"
-           data-bs-toggle="collapse"
-           href="#stockAdjustmentsMenu"
-           role="button"
-           aria-expanded="{{ request()->routeIs('stock-adjustments.*') ? 'true' : 'false' }}"
-           aria-controls="stockAdjustmentsMenu">
-            <span>
-                <i class="bi bi-arrow-left-right me-2"></i> Stock Adjustments
+        {{-- Brand: logo tile, shop name and where it is --}}
+        <a href="{{ route('dashboard') }}" class="sb-brand" title="{{ setting('system_name') }}">
+            <span class="sb-logo {{ $sbHasLogo ? 'has-image' : '' }}">
+                <img src="{{ brand_logo_url() }}" alt="">
             </span>
-            <i class="bi bi-chevron-down small"></i>
+            <span class="sb-brand-text">
+                <span class="sb-name">{{ setting('system_name') }}</span>
+                <span class="sb-place">{{ setting('location') ?: 'Pharmacy POS' }}</span>
+            </span>
         </a>
 
-        <!-- Dropdown Items -->
-        <div class="collapse ps-4 {{ request()->routeIs('stock-adjustments.*') ? 'show' : '' }}" id="stockAdjustmentsMenu">
-
-            <!-- View Adjustments -->
-            @if(auth()->user()->hasPermission('view_stock_adjustments'))
-            <a href="{{ route('stock-adjustments.index') }}"
-               class="list-group-item list-group-item-action border-0 {{ request()->routeIs('stock-adjustments.index') ? 'active' : '' }}">
-                <i class="bi bi-list-ul me-2"></i> View Adjustments
+        <nav class="sb-nav" id="sbNav">
+            <a href="{{ route('dashboard') }}" class="sb-link {{ request()->routeIs('dashboard') ? 'active' : '' }}">
+                <i class="bi bi-grid-1x2"></i><span>Dashboard</span>
+            </a>
+            @if($sbUser->hasPermission('add_pos_sell'))
+            <a href="{{ route('pos.new') }}" class="sb-link {{ request()->routeIs('pos.new') ? 'active' : '' }}">
+                <i class="bi bi-cart-check"></i><span>POS Screen</span>
+            </a>
+            @endif
+            @if($sbUser->hasPermission('view_pos_sell'))
+            <a href="{{ route('sales.index') }}" class="sb-link {{ request()->routeIs('sales.*') ? 'active' : '' }}">
+                <i class="bi bi-receipt"></i><span>Sales</span>
             </a>
             @endif
 
-            <!-- New Adjustment -->
-            @if(auth()->user()->hasPermission('create_stock_adjustment'))
-            <a href="{{ route('stock-adjustments.create') }}"
-               class="list-group-item list-group-item-action border-0 {{ request()->routeIs('stock-adjustments.create') ? 'active' : '' }}">
-                <i class="bi bi-plus-lg me-2"></i> New Adjustment
-            </a>
-
-            <!-- Bulk Upload -->
-            <a href="{{ route('stock-adjustments.bulk') }}"
-               class="list-group-item list-group-item-action border-0 {{ request()->routeIs('stock-adjustments.bulk*') ? 'active' : '' }}">
-                <i class="bi bi-cloud-upload me-2"></i> Bulk Upload
-            </a>
+            {{-- Inventory --}}
+            @if($sbProducts || $sbStock)
+            <div class="sb-label">Inventory</div>
+            @endif
+            @if($sbProducts)
+            <button type="button" class="sb-link sb-toggle {{ $sbProductsOpen ? 'has-active' : 'collapsed' }}" data-bs-toggle="collapse" data-bs-target="#sbProducts" aria-expanded="{{ $sbProductsOpen ? 'true' : 'false' }}" aria-controls="sbProducts">
+                <i class="bi bi-box-seam"></i><span>Products</span><i class="bi bi-chevron-down sb-caret"></i>
+            </button>
+            <div class="collapse {{ $sbProductsOpen ? 'show' : '' }}" id="sbProducts" data-bs-parent="#sbNav">
+                <div class="sb-sub sb-sub-grid">
+                    @if($sbUser->hasPermission('view_product'))
+                    <a href="{{ route('products.index') }}" class="sb-sublink {{ request()->routeIs('products.index') || request()->routeIs('products.show') || request()->routeIs('products.edit') ? 'active' : '' }}">All products</a>
+                    @endif
+                    @if($sbUser->hasPermission('add_product'))
+                    <a href="{{ route('products.create') }}" class="sb-sublink {{ request()->routeIs('products.create') ? 'active' : '' }}">Add product</a>
+                    @endif
+                    @if($sbUser->hasPermission('view_category'))
+                    <a href="{{ route('categories.index') }}" class="sb-sublink {{ request()->routeIs('categories.*') ? 'active' : '' }}">Categories</a>
+                    @endif
+                    @if($sbUser->hasPermission('view_brand'))
+                    <a href="{{ route('brands.index') }}" class="sb-sublink {{ request()->routeIs('brands.*') ? 'active' : '' }}">Brands</a>
+                    @endif
+                    @if($sbUser->hasPermission('view_unit'))
+                    <a href="{{ route('units.index') }}" class="sb-sublink {{ request()->routeIs('units.*') ? 'active' : '' }}">Units</a>
+                    @endif
+                </div>
+            </div>
+            @endif
+            @if($sbStock)
+            <button type="button" class="sb-link sb-toggle {{ $sbStockOpen ? 'has-active' : 'collapsed' }}" data-bs-toggle="collapse" data-bs-target="#sbStock" aria-expanded="{{ $sbStockOpen ? 'true' : 'false' }}" aria-controls="sbStock">
+                <i class="bi bi-arrow-left-right"></i><span>Stock adjustments</span><i class="bi bi-chevron-down sb-caret"></i>
+            </button>
+            <div class="collapse {{ $sbStockOpen ? 'show' : '' }}" id="sbStock" data-bs-parent="#sbNav">
+                <div class="sb-sub">
+                    @if($sbUser->hasPermission('view_stock_adjustments'))
+                    <a href="{{ route('stock-adjustments.index') }}" class="sb-sublink {{ request()->routeIs('stock-adjustments.index') ? 'active' : '' }}">All adjustments</a>
+                    @endif
+                    @if($sbUser->hasPermission('create_stock_adjustment'))
+                    <a href="{{ route('stock-adjustments.create') }}" class="sb-sublink {{ request()->routeIs('stock-adjustments.create') ? 'active' : '' }}">New adjustment</a>
+                    <a href="{{ route('stock-adjustments.bulk') }}" class="sb-sublink {{ request()->routeIs('stock-adjustments.bulk*') ? 'active' : '' }}">Bulk upload</a>
+                    @endif
+                </div>
+            </div>
             @endif
 
-        </div>
-        @endif
+            {{-- Money --}}
+            @if($sbExpenses || $sbReports)
+            <div class="sb-label">Money</div>
+            @endif
+            @if($sbExpenses)
+            <a href="{{ route('expenses.index') }}" class="sb-link {{ request()->routeIs('expenses.*') ? 'active' : '' }}">
+                <i class="bi bi-wallet2"></i><span>Expenses</span>
+            </a>
+            @endif
+            @if($sbReports)
+            <button type="button" class="sb-link sb-toggle {{ $sbReportsOpen ? 'has-active' : 'collapsed' }}" data-bs-toggle="collapse" data-bs-target="#sbReports" aria-expanded="{{ $sbReportsOpen ? 'true' : 'false' }}" aria-controls="sbReports">
+                <i class="bi bi-bar-chart-line"></i><span>Reports</span><i class="bi bi-chevron-down sb-caret"></i>
+            </button>
+            <div class="collapse {{ $sbReportsOpen ? 'show' : '' }}" id="sbReports" data-bs-parent="#sbNav">
+                <div class="sb-sub sb-sub-grid">
+                    @if($sbUser->hasPermission('view_profit_loss_report'))
+                    <a href="{{ route('reports.profit-loss') }}" class="sb-sublink {{ request()->routeIs('reports.profit-loss') ? 'active' : '' }}">Profit &amp; loss</a>
+                    @endif
+                    @if($sbUser->hasPermission('view_register_report'))
+                    <a href="{{ route('reports.register-report') }}" class="sb-sublink {{ request()->routeIs('reports.register-report') ? 'active' : '' }}">Registers</a>
+                    @endif
+                    @if($sbUser->hasPermission('view_stock_report'))
+                    <a href="{{ route('stock.report') }}" class="sb-sublink {{ request()->routeIs('stock.report') ? 'active' : '' }}">Stock</a>
+                    <a href="{{ route('reports.products.index') }}" class="sb-sublink {{ request()->routeIs('reports.products.*') ? 'active' : '' }}">Products</a>
+                    <a href="{{ route('reports.low-stock') }}" class="sb-sublink {{ request()->routeIs('reports.low-stock') ? 'active' : '' }}">Low stock</a>
+                    @endif
+                    @if($sbUser->hasPermission('view_stock_expiry_report'))
+                    <a href="{{ route('reports.stock-expiry') }}" class="sb-sublink {{ request()->routeIs('reports.stock-expiry') ? 'active' : '' }}">Expiry</a>
+                    @endif
+                </div>
+            </div>
+            @endif
 
-        <!-- Billing: the shop's subscription, with days left -->
-        @if(tenant() && (auth()->user()->hasRole('admin') || auth()->user()->hasRole('super_admin')))
+            {{-- Manage (users, roles and notifications are under Settings) --}}
+            @if($sbPeople)
+            <div class="sb-label">Manage</div>
+            @endif
+            @if($sbAdmin)
+            <a href="{{ route('integrity.index') }}" class="sb-link {{ request()->routeIs('integrity.*') ? 'active' : '' }}">
+                <i class="bi bi-shield-check"></i><span>Loss prevention</span>
+            </a>
+            <a href="{{ route('activity-log.index') }}" class="sb-link {{ request()->routeIs('activity-log.*') ? 'active' : '' }}">
+                <i class="bi bi-clock-history"></i><span>Activity log</span>
+            </a>
+            @endif
+            @if($sbPeople)
+            <a href="{{ $sbAdmin ? route('settings.index') : ($sbUser->hasPermission('view_user') ? route('admin.users.index') : route('admin.roles.index')) }}"
+               class="sb-link {{ request()->routeIs('settings.*', 'notifications.*', 'admin.users.*', 'admin.roles.*') ? 'active' : '' }}">
+                <i class="bi bi-gear"></i><span>Settings</span>
+            </a>
+            @endif
+        </nav>
+
+        {{-- Billing stays in view at the bottom, with the days left --}}
+        @if(tenant() && $sbAdmin)
             @php($billingDays = tenant()->daysLeft())
-            @php($billingTone = ['grace' => 'bg-danger', 'expired' => 'bg-danger', 'due_soon' => 'bg-warning text-dark'][tenant()->billingState()] ?? 'bg-light text-dark border')
-        <a href="{{ route('billing.index') }}"
-           class="list-group-item list-group-item-action p-3 d-flex justify-content-between align-items-center {{ request()->routeIs('billing.*') ? 'active' : '' }}">
-            <span><i class="bi bi-credit-card-2-front me-2"></i> Billing</span>
-            @if($billingDays !== null)
-                <span class="badge rounded-pill {{ $billingTone }}" title="Days of subscription left">{{ $billingDays >= 0 ? $billingDays . 'd left' : 'Overdue' }}</span>
-            @endif
-        </a>
-        @endif
-
-        <!-- Expenses -->
-        @if(auth()->user()->hasPermission('access_all_expenses'))
-        <a href="{{ route('expenses.index') }}"
-           class="list-group-item list-group-item-action p-3 {{ request()->routeIs('expenses.*') ? 'active' : '' }}">
-            <i class="bi bi-wallet2 me-2"></i> Expenses
-        </a>
-        @endif
-
-        <!-- Activity Log -->
-        @if(auth()->user()->hasRole('admin') || auth()->user()->hasRole('super_admin'))
-        <a href="{{ route('activity-log.index') }}"
-           class="list-group-item list-group-item-action p-3 {{ request()->routeIs('activity-log.*') ? 'active' : '' }}">
-            <i class="bi bi-clock-history me-2"></i> Activity Log
-        </a>
-        @endif
-
-<div class="list-group-item p-0 border-0">
-
-    <!-- Reports Toggle -->
-        @if(auth()->user()->hasPermission('view_profit_loss_report') || auth()->user()->hasPermission('view_register_report') || auth()->user()->hasPermission('view_stock_report') || auth()->user()->hasPermission('view_stock_expiry_report'))
-        <a class="list-group-item list-group-item-action p-3 d-flex justify-content-between align-items-center {{ request()->routeIs('reports.*') || request()->routeIs('stock.report') ? '' : '' }}"
-           data-bs-toggle="collapse"
-           href="#reportsMenu"
-           role="button"
-           aria-expanded="{{ request()->routeIs('reports.*') || request()->routeIs('stock.report') ? 'true' : 'false' }}"
-           aria-controls="reportsMenu">
-            <span>
-                <i class="bi bi-file-earmark-text me-2"></i> Reports
-            </span>
-            <i class="bi bi-chevron-down small"></i>
-        </a>
-
-        <!-- Dropdown Items -->
-        <div class="collapse ps-4 {{ request()->routeIs('reports.*') || request()->routeIs('stock.report') ? 'show' : '' }}" id="reportsMenu">
-
-            <!-- Profit / Loss -->
-            @if(auth()->user()->hasPermission('view_profit_loss_report'))
-            <a href="{{ route('reports.profit-loss') }}"
-               class="list-group-item list-group-item-action border-0 {{ request()->routeIs('reports.profit-loss') ? 'active' : '' }}">
-                <i class="bi bi-graph-up me-2"></i> Profit / Loss Report
+            @php($billingTone = ['grace' => 'is-danger', 'expired' => 'is-danger', 'due_soon' => 'is-warning'][tenant()->billingState()] ?? '')
+        <div class="sb-footer">
+            <a href="{{ route('billing.index') }}" class="sb-link {{ request()->routeIs('billing.*') ? 'active' : '' }}">
+                <i class="bi bi-credit-card-2-front"></i><span>Billing</span>
+                @if($billingDays !== null)
+                    <span class="sb-badge {{ $billingTone }}" title="Days of subscription left">{{ $billingDays >= 0 ? $billingDays . 'd left' : 'Overdue' }}</span>
+                @endif
             </a>
-            @endif
-
-            <!-- Register Report -->
-            @if(auth()->user()->hasPermission('view_register_report'))
-            <a href="{{ route('reports.register-report') }}"
-               class="list-group-item list-group-item-action border-0 {{ request()->routeIs('reports.register-report') ? 'active' : '' }}">
-                <i class="bi bi-cash-register me-2"></i> Register Report
-            </a>
-            @endif
-
-            <!-- Stock Report -->
-            @if(auth()->user()->hasPermission('view_stock_report'))
-            <a href="{{ route('stock.report') }}"
-               class="list-group-item list-group-item-action border-0 {{ request()->routeIs('stock.report') ? 'active' : '' }}">
-                <i class="bi bi-box-seam me-2"></i> Stock Report
-            </a>
-            @endif
-
-            <!-- Product Report -->
-            @if(auth()->user()->hasPermission('view_stock_report'))
-            <a href="{{ route('reports.products.index') }}"
-               class="list-group-item list-group-item-action border-0 {{ request()->routeIs('reports.products.*') ? 'active' : '' }}">
-                <i class="bi bi-capsule me-2"></i> Product Report
-            </a>
-            @endif
-
-            <!-- Low Stock Report -->
-            @if(auth()->user()->hasPermission('view_stock_report'))
-            <a href="{{ route('reports.low-stock') }}"
-               class="list-group-item list-group-item-action border-0 {{ request()->routeIs('reports.low-stock') ? 'active' : '' }}">
-                <i class="bi bi-exclamation-triangle me-2"></i> Low Stock Report
-            </a>
-            @endif
-
-            <!-- Stock Expiry Report -->
-            @if(auth()->user()->hasPermission('view_stock_expiry_report'))
-            <a href="{{ route('reports.stock-expiry') }}"
-               class="list-group-item list-group-item-action border-0 {{ request()->routeIs('reports.stock-expiry') ? 'active' : '' }}">
-                <i class="bi bi-clock-history me-2"></i> Stock Expiry Report
-            </a>
-            @endif
-
         </div>
         @endif
-
-
-<!-- User Management Dropdown -->
-        @if(auth()->user()->hasPermission('view_user') || auth()->user()->hasPermission('view_role'))
-        <a class="list-group-item list-group-item-action p-3 d-flex justify-content-between align-items-center"
-           data-bs-toggle="collapse"
-           href="#userManagementMenu"
-           role="button"
-           aria-expanded="{{ request()->is('admin/users*') || request()->is('admin/roles*') ? 'true' : 'false' }}">
-            
-            <span><i class="bi bi-people me-2"></i> User Management</span>
-            <i class="bi bi-chevron-down small"></i>
-        </a>
-
-        <div class="collapse {{ request()->is('admin/users*') || request()->is('admin/roles*') ? 'show' : '' }}" 
-             id="userManagementMenu">
-
-            @if(auth()->user()->hasPermission('view_user'))
-            <a href="{{ route('admin.users.index') }}" 
-               class="list-group-item list-group-item-action ps-5 {{ request()->routeIs('admin.users.*') ? 'active' : '' }}">
-                <i class="bi bi-person me-2"></i> Users
-            </a>
-            @endif
-
-            @if(auth()->user()->hasPermission('view_role'))
-            <a href="{{ route('admin.roles.index') }}" 
-               class="list-group-item list-group-item-action ps-5 {{ request()->routeIs('admin.roles.*') ? 'active' : '' }}">
-                <i class="bi bi-shield me-2"></i> Roles
-            </a>
-            @endif
-        </div>
-        @endif
-
-        <!-- Loss Prevention -->
-        @if(auth()->user()->hasRole('super_admin') || auth()->user()->hasRole('admin'))
-        <a href="{{ route('integrity.index') }}"
-           class="list-group-item list-group-item-action p-3 {{ request()->routeIs('integrity.*') ? 'active' : '' }}">
-            <i class="bi bi-shield-exclamation me-2"></i> Loss Prevention
-        </a>
-        @endif
-
-        <!-- Notifications -->
-        @if(auth()->user()->hasRole('super_admin') || auth()->user()->hasRole('admin'))
-        <a href="{{ route('notifications.index') }}"
-           class="list-group-item list-group-item-action p-3 {{ request()->routeIs('notifications.*') ? 'active' : '' }}">
-            <i class="bi bi-bell-fill me-2"></i> Notifications
-        </a>
-        @endif
-
-        <!-- Settings -->
-        @if(auth()->user()->hasRole('super_admin') || auth()->user()->hasRole('admin'))
-        <a href="{{ route('settings.index') }}" 
-           class="list-group-item list-group-item-action p-3 {{ request()->routeIs('settings.*') ? 'active' : '' }}">
-            <i class="bi bi-gear-fill me-2"></i> System Settings
-        </a>
-        @endif
-
-</div>
-         
-    </div>
-</div>
+    </aside>
     <!-- /#sidebar-wrapper -->
 
     <!-- Page Content -->
@@ -526,13 +389,79 @@
         filter: invert(1);
     }
 
-    /* Sidebar header */
-    .sidebar-heading {
-        background: #fff9e6;
-        color: #004d3d;
-        font-weight: 600;
-        padding: 15px;
+    /* Sidebar */
+    #sidebar-wrapper.sb {
+        width: 250px;
+        display: flex;
+        flex-direction: column;
+        background: var(--theme-primary);
+        background: linear-gradient(180deg, color-mix(in srgb, var(--theme-primary) 94%, #000) 0%, color-mix(in srgb, var(--theme-primary) 72%, #000) 100%);
+        color: rgba(255, 255, 255, .82);
     }
+    .sb-brand {
+        display: flex; align-items: center; gap: .7rem;
+        min-height: 60px; padding: .6rem 1rem; flex-shrink: 0;
+        color: #fff; text-decoration: none;
+        border-bottom: 1px solid rgba(255, 255, 255, .1);
+    }
+    .sb-brand:hover { color: #fff; }
+    .sb-logo {
+        width: 40px; height: 40px; flex-shrink: 0; border-radius: 11px; overflow: hidden;
+        display: grid; place-items: center;
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, .9), 0 4px 10px rgba(0, 0, 0, .25);
+    }
+    .sb-logo img { width: 100%; height: 100%; display: block; }
+    .sb-logo.has-image { background: #fff; padding: 3px; }
+    .sb-logo.has-image img { object-fit: contain; }
+    .sb-brand-text { display: flex; flex-direction: column; min-width: 0; }
+    .sb-name { font-weight: 700; font-size: .95rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sb-place { font-size: .72rem; color: rgba(255, 255, 255, .6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .sb-nav { flex: 1; overflow-y: auto; padding: .4rem .6rem .35rem; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .25) transparent; }
+    .sb-nav::-webkit-scrollbar { width: 5px; }
+    .sb-nav::-webkit-scrollbar-track { background: transparent; }
+    .sb-nav::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .25); }
+    .sb-label {
+        padding: .5rem .7rem .15rem; font-size: .66rem; font-weight: 700;
+        letter-spacing: .09em; text-transform: uppercase; color: rgba(255, 255, 255, .45);
+    }
+    .sb-link {
+        display: flex; align-items: center; gap: .7rem; width: 100%;
+        padding: .38rem .7rem; margin-bottom: 1px; border: 0; border-radius: 8px;
+        background: none; color: rgba(255, 255, 255, .82); text-align: left;
+        font-size: .875rem; line-height: 1.3; text-decoration: none;
+        transition: background-color .15s, color .15s;
+    }
+    .sb-link > i:first-child { width: 1.15rem; font-size: 1.05rem; text-align: center; flex-shrink: 0; }
+    .sb-link:hover { background: rgba(255, 255, 255, .09); color: #fff; }
+    .sb-link:focus-visible, .sb-sublink:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+    .sb-link.active { background: #fff; color: var(--theme-primary); font-weight: 600; box-shadow: 0 2px 8px rgba(0, 0, 0, .18); }
+    .sb-toggle.has-active { color: #fff; font-weight: 600; }
+    .sb-caret { margin-left: auto; font-size: .7rem; opacity: .7; transition: transform .2s; }
+    .sb-toggle:not(.collapsed) .sb-caret { transform: rotate(180deg); }
+    .sb-sub { margin: .1rem 0 .3rem 1.3rem; padding-left: .6rem; border-left: 1px solid rgba(255, 255, 255, .16); }
+    .sb-sub-grid { display: grid; grid-template-columns: auto auto; justify-content: start; gap: 1px 2px; }
+    .sb-sub-cols { grid-auto-flow: row dense; }
+    .sb-sub-cols .sb-sublink { grid-column: 1; }
+    .sb-sub-cols .sb-sublink.sb-col-2 { grid-column: 2; }
+    .sb-sub-grid .sb-sublink { padding-left: .5rem; padding-right: .5rem; font-size: .8rem; white-space: nowrap; }
+    .sb-sublink {
+        display: block; padding: .3rem .55rem; border-radius: 6px;
+        font-size: .83rem; color: rgba(255, 255, 255, .7); text-decoration: none;
+    }
+    .sb-sublink:hover { color: #fff; background: rgba(255, 255, 255, .07); }
+    .sb-sublink.active { color: #fff; font-weight: 600; background: rgba(255, 255, 255, .14); }
+
+    .sb-footer { flex-shrink: 0; padding: .55rem .6rem; border-top: 1px solid rgba(255, 255, 255, .1); }
+    .sb-footer .sb-link { margin: 0; }
+    .sb-badge {
+        margin-left: auto; padding: .15rem .5rem; border-radius: 999px;
+        font-size: .7rem; font-weight: 600; background: rgba(255, 255, 255, .16); color: #fff;
+    }
+    .sb-link.active .sb-badge { background: color-mix(in srgb, var(--theme-primary) 12%, #fff); color: var(--theme-primary); }
+    .sb-badge.is-warning { background: #fbbf24; color: #422006; }
+    .sb-badge.is-danger { background: #ef4444; color: #fff; }
+
 
     /* Sidebar Links */
     .list-group-item {

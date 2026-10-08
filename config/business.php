@@ -22,7 +22,7 @@ return [
     'receipt_footer' => env('RECEIPT_FOOTER', 'Thank you for your purchase!'),
 
     // Software vendor credit shown in small print on receipts and reports
-    'powered_by' => env('POWERED_BY', 'EDUC Consultancy'),
+    'powered_by' => env('POWERED_BY', 'Dawn Pharma'),
 
     'primary_color' => '#004d3d',
 

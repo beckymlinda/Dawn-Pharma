@@ -12,7 +12,8 @@ use Illuminate\Database\Eloquent\Builder;
  *  - a shop is selected:       only that shop's rows
  *  - on the admin portal:       only rows with no shop (e.g. platform admins);
  *                               portal code reads shop data with withoutTenantScope()
- *  - web request, no shop chosen: nothing (until the shop is selected)
+ *  - web request, no shop chosen: nothing (until the shop is selected, and also
+ *                               if code ever runs before the shop is identified)
  *  - command line (no request): all rows
  */
 trait BelongsToTenant
@@ -26,7 +27,9 @@ trait BelongsToTenant
                 $query->where($column, $tenant->id);
             } elseif (is_central()) {
                 $query->whereNull($column);
-            } elseif (tenant_unresolved()) {
+            } elseif (tenant_unresolved() || (!app()->bound('tenancy.tenant') && !app()->runningInConsole())) {
+                // Safety net: a web request where no shop has been decided yet sees nothing,
+                // never every shop's rows
                 $query->whereRaw('1 = 0');
             }
         });

@@ -122,7 +122,7 @@ Route::middleware(['auth'])->group(function () use ($permittedResource) {
         Route::get('pos/refresh/products', [POSController::class, 'refreshProducts'])->name('pos.refresh.products');
     });
     Route::get('pos/sale/{sale}/edit-data', [POSController::class, 'getSaleEditData'])->name('pos.sale.edit-data')->middleware('permission:edit_pos_sell');
-    Route::post('pos/sale/edit', [POSController::class, 'editSale'])->name('pos.edit.sale')->middleware('permission:edit_pos_sell');
+    Route::post('pos/sale/edit', [POSController::class, 'editSale'])->name('pos.edit.sale')->middleware('permission:edit_pos_sell,add_pos_sell');
 
     // Sales (SaleController limits cashiers to their own sales)
     Route::middleware('permission:view_pos_sell')->group(function () {
@@ -133,8 +133,10 @@ Route::middleware(['auth'])->group(function () use ($permittedResource) {
     });
     Route::resource('sales', SaleController::class)->only(['create','store'])->middleware('permission:add_pos_sell');
     Route::resource('sales', SaleController::class)->only(['index','show'])->middleware('permission:view_pos_sell,add_pos_sell');
-    Route::resource('sales', SaleController::class)->only(['edit','update'])->middleware('permission:edit_pos_sell');
-    Route::resource('sales', SaleController::class)->only(['destroy'])->middleware('permission:delete_pos_sell');
+    Route::resource('sales', SaleController::class)->only(['edit'])->middleware('permission:edit_pos_sell');
+    // Update and delete check their own permission, so a refused attempt is logged in Loss Prevention
+    Route::resource('sales', SaleController::class)->only(['update'])->middleware('permission:edit_pos_sell,view_pos_sell,add_pos_sell');
+    Route::resource('sales', SaleController::class)->only(['destroy'])->middleware('permission:delete_pos_sell,view_pos_sell,add_pos_sell');
 
     // Product purchase routes
     Route::get('/products/purchase', [ProductController::class, 'purchaseCreate'])->name('products.purchase.create')->middleware('permission:add_purchase');
@@ -231,12 +233,22 @@ Route::middleware(['auth'])->group(function () use ($permittedResource) {
         Route::post('/notifications/recipients', [NotificationController::class, 'storeRecipient'])->name('notifications.recipients.store');
         Route::patch('/notifications/recipients/{recipient}', [NotificationController::class, 'toggleRecipient'])->name('notifications.recipients.toggle');
         Route::delete('/notifications/recipients/{recipient}', [NotificationController::class, 'destroyRecipient'])->name('notifications.recipients.destroy');
+        Route::post('/notifications/phones', [NotificationController::class, 'storePhone'])->name('notifications.phones.store');
+        Route::patch('/notifications/phones/{phone}', [NotificationController::class, 'togglePhone'])->name('notifications.phones.toggle');
+        Route::delete('/notifications/phones/{phone}', [NotificationController::class, 'destroyPhone'])->name('notifications.phones.destroy');
+        Route::delete('/notifications/logs', [NotificationController::class, 'clearLogs'])->name('notifications.logs.clear');
+        Route::post('/notifications/z-report/sms', [NotificationController::class, 'sendTestSms'])->name('notifications.zreport.sms');
         Route::get('/notifications/z-report/preview', [NotificationController::class, 'preview'])->name('notifications.zreport.preview');
         Route::post('/notifications/z-report/send', [NotificationController::class, 'sendTest'])->name('notifications.zreport.send');
 
         // Settings
         Route::get('/settings', [\App\Http\Controllers\SettingController::class, 'index'])->name('settings.index');
         Route::post('/settings', [\App\Http\Controllers\SettingController::class, 'update'])->name('settings.update');
+        Route::get('/settings/branding', [\App\Http\Controllers\SettingController::class, 'branding'])->name('settings.branding');
+        Route::get('/settings/payment-methods', [\App\Http\Controllers\SettingController::class, 'paymentMethods'])->name('settings.payment-methods');
+        Route::post('/settings/payment-methods', [\App\Http\Controllers\SettingController::class, 'updatePaymentMethods'])->name('settings.payment-methods.update');
+        Route::post('/settings/payment-methods/add', [\App\Http\Controllers\SettingController::class, 'storePaymentMethod'])->name('settings.payment-methods.store');
+        Route::delete('/settings/payment-methods/{key}', [\App\Http\Controllers\SettingController::class, 'destroyPaymentMethod'])->name('settings.payment-methods.destroy');
     });
 
 });

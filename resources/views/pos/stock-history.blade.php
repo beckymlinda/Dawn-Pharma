@@ -1,4 +1,20 @@
 @extends('layouts.app')
+
+{{-- Helpers used below (declared first: they are conditional, so not hoisted) --}}
+@php
+if (!function_exists('getTypeColor')) {
+    function getTypeColor($type) {
+        $colors = [
+            'Purchase' => 'success',
+            'Sale' => 'danger',
+            'Opening Stock' => 'primary',
+            'Stock Adjustment' => 'warning',
+            'Stock Transfer' => 'info'
+        ];
+        return $colors[$type] ?? 'secondary';
+    }
+}
+@endphp
 @section('content')
 <div class="container-fluid">
     <div class="row">
@@ -118,16 +134,4 @@
     </div>
 </div>
 
-@php
-function getTypeColor($type) {
-    $colors = [
-        'Purchase' => 'success',
-        'Sale' => 'danger',
-        'Opening Stock' => 'primary',
-        'Stock Adjustment' => 'warning',
-        'Stock Transfer' => 'info'
-    ];
-    return $colors[$type] ?? 'secondary';
-}
-@endphp
 @endsection

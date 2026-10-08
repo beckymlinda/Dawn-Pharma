@@ -53,7 +53,7 @@ Changed receipt header to show "Receipt" title and invoice information in the sp
 │ Total:     MWK 150.00        │
 │ ===========================  │
 │ Thank you for your purchase! │
-│ Powered by EDUC Consultancy │
+│ Powered by Dawn Pharma │
 └─────────────────────────────────┘
 ```
 
@@ -76,7 +76,7 @@ Changed receipt header to show "Receipt" title and invoice information in the sp
 │ Total:     MWK 150.00        │
 │ ===========================  │
 │ Thank you for your purchase! │
-│ Powered by EDUC Consultancy │
+│ Powered by Dawn Pharma │
 └─────────────────────────────────┘
 ```
 

@@ -32,7 +32,8 @@ class CategoryController extends Controller
 
     public function show(Category $category)
     {
-        return view('categories.show', compact('category'));
+        // No separate details page: open it for editing
+        return redirect()->route('categories.edit', $category);
     }
 
     public function edit(Category $category)

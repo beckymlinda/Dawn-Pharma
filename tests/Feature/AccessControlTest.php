@@ -53,7 +53,21 @@ class AccessControlTest extends TestCase
         $this->actingAs($cashier)->get('/settings')->assertForbidden();
         $this->actingAs($cashier)->get('/loss-prevention')->assertForbidden();
         $this->actingAs($cashier)->get('/reports/profit-loss')->assertForbidden();
-        $this->actingAs($cashier)->delete('/sales/1')->assertForbidden();
+
+        // Deleting is refused (and the attempt is logged in Loss Prevention)
+        $register = $this->openRegisterFor($cashier);
+        $sale = \App\Models\Sale::create(['register_id' => $register->id, 'invoice_no' => 'INV-AC', 'payment_status' => 'paid',
+            'payment_method' => 'cash', 'total_amount' => 100, 'total_paid' => 100, 'total_items' => 1]);
+        $this->actingAs($cashier)->delete("/sales/{$sale->id}")->assertSessionHas('error');
+        $this->assertNotNull(\App\Models\Sale::find($sale->id));
+        $this->assertSame(1, \App\Models\IntegrityEvent::where('type', 'delete_blocked')->count());
+
+        // No links to pages the cashier cannot open
+        $this->actingAs($cashier)->get('/dashboard')->assertOk()
+            ->assertDontSee('href="' . route('reports.low-stock') . '"', false)
+            ->assertDontSee('href="' . route('reports.stock-expiry') . '"', false);
+        $this->actingAs($cashier)->get('/sales')->assertOk()->assertDontSee(route('sales.edit', $sale->id));
+        $this->actingAs($cashier)->get("/sales/{$sale->id}")->assertOk()->assertDontSee(route('sales.edit', $sale->id))->assertDontSee('confirmDelete(' . $sale->id . ')', false);
     }
 
     public function test_admin_role_reaches_admin_only_pages(): void

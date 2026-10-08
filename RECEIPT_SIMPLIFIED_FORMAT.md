@@ -179,7 +179,7 @@ Paid:      MWK 100.00
 Change:    MWK 0.00
 ===============================
 Thank you for your purchase!
-Powered by EDUC Consultancy
+Powered by Dawn Pharma
 ```
 
 ### **✅ Scenario 2: Customer Sale**
@@ -200,7 +200,7 @@ Paid:      MWK 300.00
 Change:    MWK 50.00
 ===============================
 Thank you for your purchase!
-Powered by EDUC Consultancy
+Powered by Dawn Pharma
 ```
 
 ---

@@ -56,7 +56,7 @@ return [
         'users', 'units', 'categories', 'brands', 'products', 'contacts', 'purchases', 'purchase_items',
         'sales', 'sale_items', 'pos', 'locations', 'registers', 'stock_histories', 'roles',
         'stock_adjustments', 'payments', 'activity_logs', 'settings', 'notification_recipients',
-        'notification_logs', 'integrity_events', 'expenses',
+        'notification_logs', 'integrity_events', 'expenses', 'sms_recipients',
     ],
 
 ];

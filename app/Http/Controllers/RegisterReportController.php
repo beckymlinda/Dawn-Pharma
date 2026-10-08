@@ -69,6 +69,7 @@ class RegisterReportController extends Controller
                 'total_standard_bank' => $this->getTotalByPaymentMethod($register, 'standard_bank'),
                 'total_airtel_money' => $this->getTotalByPaymentMethod($register, 'airtel_money'),
                 'total_mpamba' => $this->getTotalByPaymentMethod($register, 'mpamba'),
+                'total_other' => $this->getOtherMethodsTotal($register),
             ];
         });
 
@@ -168,7 +169,7 @@ class RegisterReportController extends Controller
         $registers = $query->orderBy('opened_at', 'desc')->get();
 
         // Create CSV content
-        $csvData = "Open Time,Close Time,Location,User,Email,Total Card,Total Cheques,Total Cash,Total Bank Transfer,Total Advance,National Bank,Standard Bank,Airtel Money,Mpamba\n";
+        $csvData = "Open Time,Close Time,Location,User,Email,Total Card,Total Cheques,Total Cash,Total Bank Transfer,Total Advance,National Bank,Standard Bank,Airtel Money,Mpamba,Other Methods\n";
 
         foreach ($registers as $register) {
             $openTime = $register->opened_at->format('d-m-Y H:i');
@@ -187,6 +188,7 @@ class RegisterReportController extends Controller
                 $this->getTotalByPaymentMethod($register, 'standard_bank'),
                 $this->getTotalByPaymentMethod($register, 'airtel_money'),
                 $this->getTotalByPaymentMethod($register, 'mpamba'),
+                $this->getOtherMethodsTotal($register),
             ];
 
             $csvData .= "\"$openTime\",\"$closeTime\",\"$location\",\"$userName\",\"$userEmail\"," . implode(',', $vals) . "\n";
@@ -219,6 +221,26 @@ class RegisterReportController extends Controller
         return $total;
     }
 
+    /** Methods without their own column (ones a shop added itself, "other") */
+    private const COLUMN_METHODS = ['cash', 'card', 'cheque', 'bank_transfer', 'advance', 'national_bank', 'standard_bank', 'airtel_money', 'mpamba'];
+
+    private function getOtherMethodsTotal($register)
+    {
+        $total = 0;
+        foreach ($register->sales as $sale) {
+            if ($sale->payment_method === 'split' && $sale->payments) {
+                foreach ($sale->payments as $payment) {
+                    if (!in_array(strtolower($payment->method), self::COLUMN_METHODS, true)) {
+                        $total += $payment->amount;
+                    }
+                }
+            } elseif (!in_array(strtolower((string) $sale->payment_method), self::COLUMN_METHODS, true)) {
+                $total += $sale->total_amount;
+            }
+        }
+        return $total;
+    }
+
     /**
      * Calculate summary totals for all registers
      */
@@ -234,9 +256,11 @@ class RegisterReportController extends Controller
             'total_standard_bank' => 0,
             'total_airtel_money' => 0,
             'total_mpamba' => 0,
+            'total_other' => 0,
         ];
 
         foreach ($registers as $register) {
+            $totals['total_other'] += $this->getOtherMethodsTotal($register);
             $totals['total_cash'] += $this->getTotalByPaymentMethod($register, 'cash');
             $totals['total_card'] += $this->getTotalByPaymentMethod($register, 'card');
             $totals['total_cheques'] += $this->getTotalByPaymentMethod($register, 'cheque');

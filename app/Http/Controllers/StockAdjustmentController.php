@@ -217,7 +217,8 @@ class StockAdjustmentController extends Controller
 
     public function show(StockAdjustment $stockAdjustment)
     {
-        return view('stock-adjustments.show', compact('stockAdjustment'));
+        // Adjustments are listed (with all their details) on the adjustments page
+        return redirect()->route('stock-adjustments.index', ['search' => $stockAdjustment->product?->name]);
     }
 
     /**

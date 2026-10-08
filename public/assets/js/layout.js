@@ -1,4 +1,4 @@
-// Layout JavaScript for EDUC Pharmacy
+// Layout JavaScript for Dawn Pharma POS
 
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize tooltips

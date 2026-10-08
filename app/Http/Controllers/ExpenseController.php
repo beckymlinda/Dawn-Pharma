@@ -35,7 +35,8 @@ class ExpenseController extends Controller
             'from' => $from,
             'to' => $to,
             'categories' => Expense::CATEGORIES,
-            'paymentMethods' => PaymentMethods::getDisplayNames(),
+            // Only methods switched on in Settings → Payment methods
+            'paymentMethods' => PaymentMethods::enabledNames(old('payment_method')),
         ]);
     }
 

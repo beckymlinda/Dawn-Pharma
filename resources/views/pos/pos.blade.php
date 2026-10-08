@@ -266,7 +266,7 @@
               <button type="button" class="btn btn-link btn-sm px-0" id="paySingleToggle">Use one method</button>
             </div>
             <div id="paymentMethodsList"></div>
-            <div class="small text-muted mb-2">Type the first amount; the rest goes on the next method automatically.</div>
+            <div class="small text-muted mb-2">Lower the cash to what was paid in cash; the rest moves to the next line. Then choose its method.</div>
             <button type="button" class="btn btn-outline-secondary btn-sm" id="payAddLine"><i class="bi bi-plus-lg me-1"></i> Add another method</button>
           </div>
           </div>
@@ -478,6 +478,7 @@ window.fetch = function(url, options = {}) {
 <script src="{{ asset('js/pos/search.js') }}?v={{ filemtime(public_path('js/pos/search.js')) }}"></script>
 <script src="{{ asset('js/pos/products.js') }}?v={{ filemtime(public_path('js/pos/products.js')) }}"></script>
 <script src="{{ asset('js/pos/cart.js') }}?v={{ filemtime(public_path('js/pos/cart.js')) }}"></script>
+<script>window.POS_PAYMENT_METHODS = @json(\App\Helpers\PaymentMethods::forPos());</script>
 <script src="{{ asset('js/pos/payments.js') }}?v={{ filemtime(public_path('js/pos/payments.js')) }}"></script>
 <script src="{{ asset('js/pos/barcode.js') }}?v={{ filemtime(public_path('js/pos/barcode.js')) }}"></script>
 <script src="{{ asset('js/pos/grid.js') }}?v={{ filemtime(public_path('js/pos/grid.js')) }}"></script>

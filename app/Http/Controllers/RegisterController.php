@@ -65,7 +65,8 @@ class RegisterController extends Controller
             ->first();
 
         if (!$openRegister) {
-            return back()->with('error', 'No open register to close.');
+            // Not back(): right after closing, "back" is this same page and would redirect forever
+            return redirect()->route('register.create')->with('error', 'There is no open register to close.');
         }
 
         $totals = [
@@ -125,12 +126,9 @@ class RegisterController extends Controller
             $methodKey = 'total_' . ($method === 'cheque' ? 'cheques' : $method);
             $countKey = 'count_' . ($method === 'cheque' ? 'cheques' : $method);
 
-            if (array_key_exists($methodKey, $totals)) {
-                $totals[$methodKey] = (float)$item->total;
-            }
-            if (array_key_exists($countKey, $counts)) {
-                $counts[$countKey] = (int)$item->count;
-            }
+            // Methods a shop added itself get their own line too
+            $totals[$methodKey] = ($totals[$methodKey] ?? 0) + (float)$item->total;
+            $counts[$countKey] = ($counts[$countKey] ?? 0) + (int)$item->count;
         }
 
         // Process split payments
@@ -139,12 +137,9 @@ class RegisterController extends Controller
             $methodKey = 'total_' . ($method === 'cheque' ? 'cheques' : $method);
             $countKey = 'count_' . ($method === 'cheque' ? 'cheques' : $method);
 
-            if (array_key_exists($methodKey, $totals)) {
-                $totals[$methodKey] += (float)$item->total;
-            }
-            if (array_key_exists($countKey, $counts)) {
-                $counts[$countKey] += (int)$item->count;
-            }
+            // Methods a shop added itself get their own line too
+            $totals[$methodKey] = ($totals[$methodKey] ?? 0) + (float)$item->total;
+            $counts[$countKey] = ($counts[$countKey] ?? 0) + (int)$item->count;
         }
 
         return view('pos.register.close', [
@@ -166,7 +161,8 @@ class RegisterController extends Controller
         }
 
         if ($register->closed_at) {
-            return back()->with('error', 'Register is already closed.');
+            // e.g. the close button was pressed twice: the first press already closed it
+            return redirect()->route('dashboard')->with('success', 'The register is already closed.');
         }
 
         $request->validate(['counted_cash' => 'nullable|numeric|min:0']);
@@ -246,7 +242,8 @@ class RegisterController extends Controller
 }
 
         if ($register->closed_at) {
-            return back()->with('error', 'Register is already closed.');
+            // e.g. the close button was pressed twice: the first press already closed it
+            return redirect()->route('dashboard')->with('success', 'The register is already closed.');
         }
 
         $request->validate(['counted_cash' => (\App\Models\IntegrityEvent::cashCountRequired() ? 'required' : 'nullable') . '|numeric|min:0'], [

@@ -24,10 +24,9 @@ class Purchase extends Model
         'created_by',
     ];
 
-    protected $dates = [
-        'purchase_date',
-        'created_at',
-        'updated_at',
+    // ($dates no longer works in this Laravel version, so purchase_date came back as text)
+    protected $casts = [
+        'purchase_date' => 'datetime',
     ];
 
     public function supplier()

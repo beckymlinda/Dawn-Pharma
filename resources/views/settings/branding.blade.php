@@ -1,156 +1,16 @@
 @extends('layouts.app')
 
-@section('title', 'System Settings')
+@section('title', 'Settings · Branding')
 
 @section('content')
-<div class="container-fluid py-4">
-    <div class="row justify-content-center">
-        <div class="col-lg-10 col-xl-9">
+<div class="container-fluid">
+    @include('settings._tabs')
 
-            {{-- Page Header --}}
-            <div class="d-flex align-items-center mb-4">
-                <div class="settings-icon-wrap me-3">
-                    <i class="bi bi-gear-fill"></i>
-                </div>
-                <div>
-                    <h4 class="mb-0 fw-bold">System Settings</h4>
-                    <small class="text-muted">Manage your business details, receipt, branding and theme colors</small>
-                </div>
-            </div>
+    <form action="{{ route('settings.update') }}" method="POST" enctype="multipart/form-data" id="settingsForm">
+        @csrf
+        <input type="hidden" name="section" value="branding">
 
-            @if(session('success'))
-                <div class="alert alert-success alert-dismissible fade show border-0 shadow-sm" role="alert">
-                    <i class="bi bi-check-circle-fill me-2"></i>{{ session('success') }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-            @endif
-
-            @if($errors->any())
-                <div class="alert alert-danger alert-dismissible fade show border-0 shadow-sm" role="alert">
-                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                    <ul class="mb-0 ps-0" style="list-style:none;">
-                        @foreach($errors->all() as $error)
-                            <li>{{ $error }}</li>
-                        @endforeach
-                    </ul>
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-            @endif
-
-            <form action="{{ route('settings.update') }}" method="POST" enctype="multipart/form-data" id="settingsForm">
-                @csrf
-
-                <div class="row g-4">
-
-                    {{-- ===== Basic Information Card ===== --}}
-                    <div class="col-md-6">
-                        <div class="card border-0 shadow-sm h-100">
-                            <div class="card-header bg-transparent border-bottom-0 pt-4 px-4">
-                                <h6 class="fw-bold text-primary mb-0">
-                                    <i class="bi bi-building me-2"></i>Business Information
-                                </h6>
-                            </div>
-                            <div class="card-body px-4 pb-4">
-                                <div class="mb-3">
-                                    <label class="form-label fw-semibold small text-uppercase text-muted">Business Name</label>
-                                    <input type="text" name="system_name" class="form-control"
-                                           value="{{ old('system_name', $settings['system_name'] ?? '') }}"
-                                           placeholder="Enter business name" required>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label class="form-label fw-semibold small text-uppercase text-muted">Location / Address</label>
-                                    <input type="text" name="location" class="form-control"
-                                           value="{{ old('location', $settings['location'] ?? '') }}"
-                                           placeholder="e.g. Plot 12, City Centre, Lilongwe">
-                                </div>
-
-                                <div class="row g-3 mb-3">
-                                    <div class="col-sm-6">
-                                        <label class="form-label fw-semibold small text-uppercase text-muted">Telephone Number</label>
-                                        <input type="text" name="telephone" class="form-control"
-                                               value="{{ old('telephone', $settings['telephone'] ?? '') }}"
-                                               placeholder="e.g. +265 999 000 000">
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <label class="form-label fw-semibold small text-uppercase text-muted">Email</label>
-                                        <input type="email" name="email" class="form-control"
-                                               value="{{ old('email', $settings['email'] ?? '') }}"
-                                               placeholder="shop@example.com">
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label class="form-label fw-semibold small text-uppercase text-muted">TPIN / VAT Number</label>
-                                    <input type="text" name="tax_number" class="form-control"
-                                           value="{{ old('tax_number', $settings['tax_number'] ?? '') }}"
-                                           placeholder="Printed on receipts when filled in">
-                                </div>
-
-                                <div class="mb-0">
-                                    <label class="form-label fw-semibold small text-uppercase text-muted">Receipt Message</label>
-                                    <input type="text" name="receipt_footer" class="form-control"
-                                           value="{{ old('receipt_footer', $settings['receipt_footer'] ?? '') }}"
-                                           placeholder="e.g. Thank you for your purchase!">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {{-- ===== Theme Colors Card ===== --}}
-                    <div class="col-md-6">
-                        <div class="card border-0 shadow-sm h-100">
-                            <div class="card-header bg-transparent border-bottom-0 pt-4 px-4">
-                                <h6 class="fw-bold text-primary mb-0">
-                                    <i class="bi bi-palette-fill me-2"></i>Theme Colors
-                                </h6>
-                            </div>
-                            <div class="card-body px-4 pb-4">
-                                <div class="row g-3">
-                                    <div class="col-6">
-                                        <label class="form-label fw-semibold small text-uppercase text-muted">Primary Color</label>
-                                        <div class="color-picker-wrap">
-                                            <input type="color" name="primary_color" id="primaryColor"
-                                                   class="form-control form-control-color"
-                                                   value="{{ $settings['primary_color'] ?? '#1E3A8A' }}">
-                                            <span class="color-hex-label" id="primaryHex">{{ $settings['primary_color'] ?? '#1E3A8A' }}</span>
-                                        </div>
-                                    </div>
-                                    <div class="col-6">
-                                        <label class="form-label fw-semibold small text-uppercase text-muted">Secondary Color</label>
-                                        <div class="color-picker-wrap">
-                                            <input type="color" name="secondary_color" id="secondaryColor"
-                                                   class="form-control form-control-color"
-                                                   value="{{ $settings['secondary_color'] ?? '#10B981' }}">
-                                            <span class="color-hex-label" id="secondaryHex">{{ $settings['secondary_color'] ?? '#10B981' }}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {{-- Live Color Preview --}}
-                                <div class="mt-4">
-                                    <label class="form-label fw-semibold small text-uppercase text-muted">Preview</label>
-                                    <div class="color-preview-bar" id="colorPreviewBar">
-                                        <div class="preview-primary" id="previewPrimary"
-                                             style="background: {{ $settings['primary_color'] ?? '#1E3A8A' }};">
-                                            <span>Primary</span>
-                                        </div>
-                                        <div class="preview-secondary" id="previewSecondary"
-                                             style="background: {{ $settings['secondary_color'] ?? '#10B981' }};">
-                                            <span>Secondary</span>
-                                        </div>
-                                    </div>
-                                    <div class="preview-navbar mt-2" id="previewNavbar"
-                                         style="background: linear-gradient(90deg, {{ $settings['primary_color'] ?? '#1E3A8A' }} 0%, {{ $settings['secondary_color'] ?? '#10B981' }} 100%);">
-                                        <i class="bi bi-list text-white me-2"></i>
-                                        <span class="text-white small fw-semibold">Navbar Preview</span>
-                                        <span class="text-white ms-auto small opacity-75">Admin User</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
+        <div class="row g-4">
                     {{-- ===== Logo Upload Card ===== --}}
                     <div class="col-md-6">
                         <div class="card border-0 shadow-sm h-100">
@@ -247,18 +107,72 @@
                         </div>
                     </div>
 
-                </div>
+                    {{-- ===== Theme Colors Card ===== --}}
+                    <div class="col-12">
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-header bg-transparent border-bottom-0 pt-4 px-4">
+                                <h6 class="fw-bold text-primary mb-0">
+                                    <i class="bi bi-palette-fill me-2"></i>Theme Colors
+                                </h6>
+                            </div>
+                            <div class="card-body px-4 pb-4">
+                                <div class="row g-3">
+                                    <div class="col-6">
+                                        <label class="form-label fw-semibold small text-uppercase text-muted">Primary Color</label>
+                                        <div class="color-picker-wrap">
+                                            <input type="color" name="primary_color" id="primaryColor"
+                                                   class="form-control form-control-color"
+                                                   value="{{ $settings['primary_color'] ?? '#1E3A8A' }}">
+                                            <span class="color-hex-label" id="primaryHex">{{ $settings['primary_color'] ?? '#1E3A8A' }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label fw-semibold small text-uppercase text-muted">Secondary Color</label>
+                                        <div class="color-picker-wrap">
+                                            <input type="color" name="secondary_color" id="secondaryColor"
+                                                   class="form-control form-control-color"
+                                                   value="{{ $settings['secondary_color'] ?? '#10B981' }}">
+                                            <span class="color-hex-label" id="secondaryHex">{{ $settings['secondary_color'] ?? '#10B981' }}</span>
+                                        </div>
+                                    </div>
+                                </div>
 
-                {{-- Save Button --}}
-                <div class="text-end mt-4 mb-3">
-                    <button type="submit" class="btn btn-primary px-5 py-2 fw-bold shadow-sm" id="saveBtn">
-                        <i class="bi bi-save me-2"></i>Save Settings
-                    </button>
-                </div>
-            </form>
-
+                                {{-- Live Color Preview --}}
+                                <div class="mt-4">
+                                    <label class="form-label fw-semibold small text-uppercase text-muted">Preview</label>
+                                    <div class="color-preview-bar" id="colorPreviewBar">
+                                        <div class="preview-primary" id="previewPrimary"
+                                             style="background: {{ $settings['primary_color'] ?? '#1E3A8A' }};">
+                                            <span>Primary</span>
+                                        </div>
+                                        <div class="preview-secondary" id="previewSecondary"
+                                             style="background: {{ $settings['secondary_color'] ?? '#10B981' }};">
+                                            <span>Secondary</span>
+                                        </div>
+                                    </div>
+                                    <div class="preview-navbar mt-2" id="previewNavbar"
+                                         style="background: linear-gradient(90deg, {{ $settings['primary_color'] ?? '#1E3A8A' }} 0%, {{ $settings['secondary_color'] ?? '#10B981' }} 100%);">
+                                        <i class="bi bi-list text-white me-2"></i>
+                                        <span class="text-white small fw-semibold">Navbar Preview</span>
+                                        <span class="text-white ms-auto small opacity-75">Admin User</span>
+                                    </div>
+                                    <div class="preview-sidebar mt-2" id="previewSidebar" style="background: {{ $settings['primary_color'] ?? '#004d3d' }};">
+                                        <span class="preview-sidebar-logo"><img src="{{ brand_logo_url() }}" alt="" id="previewSidebarLogo"></span>
+                                        <span class="d-flex flex-column" style="min-width:0">
+                                            <span class="text-white fw-bold small text-truncate">{{ $settings['system_name'] ?? setting('system_name') }}</span>
+                                            <span class="text-white-50" style="font-size:.7rem">Sidebar preview</span>
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
         </div>
-    </div>
+
+        <div class="mt-4 mb-3">
+            <button type="submit" class="btn btn-primary px-4" id="saveBtn"><i class="bi bi-check2 me-1"></i> Save branding</button>
+        </div>
+    </form>
 </div>
 
 <style>
@@ -430,6 +344,9 @@
     #saveBtn:active {
         transform: translateY(0);
     }
+    .preview-sidebar { border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; }
+    .preview-sidebar-logo { width: 34px; height: 34px; border-radius: 9px; overflow: hidden; background: #fff; box-shadow: 0 0 0 2px rgba(255,255,255,.9); flex-shrink: 0; }
+    .preview-sidebar-logo img { width: 100%; height: 100%; object-fit: contain; display: block; }
 </style>
 @endsection
 
@@ -471,6 +388,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const reader = new FileReader();
             reader.onload = function (event) {
                 preview.src = event.target.result;
+                if (inputId === 'logoInput') document.getElementById('previewSidebarLogo').src = event.target.result;
                 preview.classList.remove('d-none');
 
                 // Hide placeholder if it exists
@@ -534,6 +452,7 @@ document.addEventListener('DOMContentLoaded', function () {
         previewPrimary.style.background = pColor;
         previewSecondary.style.background = sColor;
         previewNavbar.style.background = 'linear-gradient(90deg, ' + pColor + ' 0%, ' + sColor + ' 100%)';
+        document.getElementById('previewSidebar').style.background = pColor;
     }
 
     if (primaryColor) primaryColor.addEventListener('input', updateColorPreview);

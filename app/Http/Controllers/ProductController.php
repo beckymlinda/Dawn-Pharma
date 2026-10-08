@@ -520,6 +520,89 @@ class ProductController extends Controller
         return response()->stream($callback, 200, $headers);
     }
 
+    /** CSV column names (lower case, punctuation as "_") => product field */
+    private const BULK_COLUMNS = [
+        'name' => 'name', 'product_name' => 'name', 'product' => 'name',
+        'sku' => 'sku', 'stock_keeping_unit' => 'sku', 'code' => 'sku', 'barcode' => 'sku',
+        'description' => 'description',
+        'purchase_price' => 'purchase_price', 'purchase_pr' => 'purchase_price', 'purchase_price_mwk' => 'purchase_price', 'cost_price' => 'purchase_price', 'cost' => 'purchase_price',
+        'selling_price' => 'selling_price', 'selling_pr' => 'selling_price', 'selling_price_mwk' => 'selling_price', 'price' => 'selling_price',
+        'current_stock' => 'current_stock', 'current_stoc' => 'current_stock', 'current_stock_qty' => 'current_stock', 'stock' => 'current_stock', 'quantity' => 'current_stock', 'qty' => 'current_stock',
+        'alert_quantity' => 'alert_quantity', 'alert_quanti' => 'alert_quantity', 'alert_qty' => 'alert_quantity', 'reorder_level' => 'alert_quantity',
+        'expiry_date' => 'expiry_date', 'expiry_date_yyyy_mm_dd' => 'expiry_date', 'expiry' => 'expiry_date', 'expiry_date_dd_mm_yyyy' => 'expiry_date',
+        'category_name' => 'category_name', 'category' => 'category_name',
+        'brand_name' => 'brand_name', 'brand' => 'brand_name', 'manufacturer' => 'brand_name',
+        'unit_name' => 'unit_name', 'unit' => 'unit_name',
+        'supplier_name' => 'supplier_name', 'supplier' => 'supplier_name',
+    ];
+
+    /** Column order of the downloadable template (used when a file has no recognisable header) */
+    private const TEMPLATE_ORDER = ['name', 'sku', 'description', 'purchase_price', 'selling_price', 'current_stock',
+        'alert_quantity', 'expiry_date', 'category_name', 'brand_name', 'unit_name', 'supplier_name'];
+
+    /**
+     * "12,500", "MWK 18,000.50", " 300 " → number; "" → null; anything else → false.
+     */
+    private function bulkNumber(?string $value): float|null|false
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+        $clean = str_replace([',', ' ', "\u{00A0}"], '', preg_replace('/^(mwk|mk|k)\s*/i', '', $value));
+
+        return is_numeric($clean) ? (float) $clean : false;
+    }
+
+    /**
+     * Expiry dates as people type them in Malawi: day first (31/12/2027, 31-12-2027,
+     * 31.12.27), ISO (2027-12-31), "31 Dec 2027", or an Excel date number. Null when empty,
+     * false when it cannot be understood.
+     */
+    private function bulkDate(?string $value): string|null|false
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+        if (preg_match('/^\d{5}$/', $value)) {   // Excel stores dates as days since 1899-12-30
+            return \Carbon\Carbon::create(1899, 12, 30)->addDays((int) $value)->format('Y-m-d');
+        }
+        foreach (['Y-m-d', 'd/m/Y', 'd-m-Y', 'd.m.Y', 'd/m/y', 'd-m-y', 'd.m.y', 'Y/m/d', 'm/Y', 'm-Y'] as $format) {
+            $date = \DateTime::createFromFormat('!' . $format, $value);
+            $errors = \DateTime::getLastErrors();
+            if ($date && (!$errors || ($errors['warning_count'] === 0 && $errors['error_count'] === 0))) {
+                // "12/2027" means the end of that month, as printed on packs
+                return in_array($format, ['m/Y', 'm-Y'], true) ? $date->format('Y-m-t') : $date->format('Y-m-d');
+            }
+        }
+        if (preg_match('/[a-z]/i', $value)) {   // "31 Dec 2027", "Dec 2027"
+            try {
+                return \Carbon\Carbon::parse($value)->format('Y-m-d');
+            } catch (\Exception $e) {
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Find a category/brand/unit/supplier by name whatever its case, or create it.
+     */
+    private function bulkLookup(array &$cache, string $name, callable $create): ?int
+    {
+        $name = trim(preg_replace('/\s+/', ' ', $name));
+        if ($name === '') {
+            return null;
+        }
+        $key = mb_strtolower($name);
+        if (!array_key_exists($key, $cache)) {
+            $cache[$key] = $create($name)->id;
+        }
+
+        return $cache[$key];
+    }
+
     /**
      * Handle bulk product upload from CSV.
      */
@@ -527,115 +610,60 @@ class ProductController extends Controller
     {
         $request->validate([
             'upload_file' => 'required|file|mimes:csv,txt|max:5120',
+        ], [
+            'upload_file.mimes' => 'Upload a CSV file. In Excel use File > Save As > "CSV UTF-8 (Comma delimited)".',
         ]);
 
         // Increase execution time and memory for large uploads
-        set_time_limit(600); // 10 minutes
+        set_time_limit(600);
         ini_set('memory_limit', '512M');
 
-        $file = $request->file('upload_file');
-        $filePath = $file->getRealPath();
-        
-        // Detect delimiter
-        $firstLine = file_get_contents($filePath, false, null, 0, 1024);
-        $delimiter = ','; // default
-        if (strpos($firstLine, "\t") !== false) {
-            $delimiter = "\t";
-        } elseif (strpos($firstLine, ';') !== false && strpos($firstLine, ',') === false) {
-            $delimiter = ';';
+        $contents = file_get_contents($request->file('upload_file')->getRealPath());
+        $contents = preg_replace('/^\xEF\xBB\xBF/', '', $contents);   // Excel's "CSV UTF-8" marker
+        if (!mb_check_encoding($contents, 'UTF-8')) {
+            $contents = mb_convert_encoding($contents, 'UTF-8', 'Windows-1252');   // older Excel "CSV"
         }
-        
-        $handle = fopen($filePath, 'r');
-        $header = fgetcsv($handle, 0, $delimiter); // Read header row
 
-        $headerMap = [];
-        if (is_array($header)) {
-            foreach ($header as $columnIndex => $columnName) {
-                $normalized = trim(strtolower(str_replace(['\xEF\xBB\xBF', '\r', '\n', '\t'], '', $columnName)));
-                $normalized = preg_replace('/[^a-z0-9]+/', '_', $normalized);
+        // Delimiter: whichever of , ; tab appears most in the header line
+        $firstLine = strtok($contents, "\r\n") ?: '';
+        $counts = [',' => substr_count($firstLine, ','), ';' => substr_count($firstLine, ';'), "\t" => substr_count($firstLine, "\t")];
+        arsort($counts);
+        $delimiter = array_key_first($counts);
 
-                switch ($normalized) {
-                    case 'name':
-                    case 'product_name':
-                        $headerMap['name'] = $columnIndex;
-                        break;
-                    case 'sku':
-                    case 'stock_keeping_unit':
-                        $headerMap['sku'] = $columnIndex;
-                        break;
-                    case 'description':
-                        $headerMap['description'] = $columnIndex;
-                        break;
-                    case 'purchase_price':
-                    case 'purchase_pr':
-                    case 'purchase_price_mwk':
-                        $headerMap['purchase_price'] = $columnIndex;
-                        break;
-                    case 'selling_price':
-                    case 'selling_pr':
-                        $headerMap['selling_price'] = $columnIndex;
-                        break;
-                    case 'current_stock':
-                    case 'current_stoc':
-                    case 'current_stock_qty':
-                        $headerMap['current_stock'] = $columnIndex;
-                        break;
-                    case 'alert_quantity':
-                    case 'alert_quanti':
-                    case 'alert_qty':
-                        $headerMap['alert_quantity'] = $columnIndex;
-                        break;
-                    case 'expiry_date':
-                    case 'expiry_date_yyyy_mm_dd':
-                    case 'expiry':
-                        $headerMap['expiry_date'] = $columnIndex;
-                        break;
-                    case 'category_name':
-                    case 'category':
-                        $headerMap['category_name'] = $columnIndex;
-                        break;
-                    case 'brand_name':
-                    case 'brand':
-                    case 'manufacturer':
-                        $headerMap['brand_name'] = $columnIndex;
-                        break;
-                    case 'unit_name':
-                    case 'unit':
-                        $headerMap['unit_name'] = $columnIndex;
-                        break;
-                    case 'supplier_name':
-                    case 'supplier':
-                        $headerMap['supplier_name'] = $columnIndex;
-                        break;
-                }
+        $handle = fopen('php://temp', 'r+');
+        fwrite($handle, $contents);
+        rewind($handle);
+
+        // Columns by their header names, in any order; the template order if none are recognised
+        $header = fgetcsv($handle, 0, $delimiter) ?: [];
+        $columns = [];
+        foreach ($header as $index => $title) {
+            $normalized = trim(preg_replace('/[^a-z0-9]+/', '_', strtolower(trim((string) $title))), '_');
+            if (isset(self::BULK_COLUMNS[$normalized]) && !isset($columns[self::BULK_COLUMNS[$normalized]])) {
+                $columns[self::BULK_COLUMNS[$normalized]] = $index;
             }
         }
+        if (!isset($columns['name'])) {
+            $columns = array_flip(self::TEMPLATE_ORDER);
+        }
+        $cell = fn (array $row, string $field) => isset($columns[$field]) ? trim((string) ($row[$columns[$field]] ?? '')) : '';
 
         $successCount = 0;
         $skipCount = 0;
         $errorCount = 0;
         $errors = [];
 
-        // Cache for foreign keys to avoid redundant queries
-        $categories = Category::pluck('id', 'name')->toArray();
-        $brands = Brand::pluck('id', 'name')->toArray();
-        $units = Unit::pluck('id', 'name')->toArray();
-        $suppliers = Contact::where('type', 'supplier')->pluck('id', 'name')->toArray();
+        // Existing names (lower case) so each is looked up once, whatever its case
+        $names = fn ($query) => $query->get(['id', 'name'])->mapWithKeys(fn ($r) => [mb_strtolower(trim($r->name)) => $r->id])->all();
+        $categories = $names(Category::query());
+        $brands = $names(Brand::query());
+        $units = $names(Unit::query());
+        $suppliers = $names(Contact::where('type', 'supplier'));
 
-        // Build normalized name -> id maps for case-insensitive lookups
-        $unitsNormalized = [];
-        foreach ($units as $uName => $uId) {
-            $unitsNormalized[strtolower(trim($uName))] = $uId;
-        }
-
-        // Track SKUs and Names processed in this batch to avoid duplicates within the same CSV
+        // SKUs and names already in this shop or earlier in this file
+        $existingSkus = array_change_key_case(array_flip(Product::whereNotNull('sku')->pluck('sku')->all()));
+        $existingNames = array_flip(Product::pluck('name')->map(fn ($n) => mb_strtolower(trim($n)))->all());
         $processedSkus = [];
-        $processedNames = [];
-        
-        // Track newly created categories, brands, and units to avoid duplicate creation within batch
-        $newCategoriesCreated = [];
-        $newBrandsCreated = [];
-        $newUnitsCreated = [];
 
         // Reset the shared SKU counter so it re-seeds from the current DB
         // state at the start of this upload (see generateUniqueSku()).
@@ -644,188 +672,76 @@ class ProductController extends Controller
         try {
             DB::beginTransaction();
 
-            $rowNumber = 1; // Start after header
+            $rowNumber = 1;
             while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
                 $rowNumber++;
 
-                $nameIndex = $headerMap['name'] ?? 0;
-                $skuIndex = $headerMap['sku'] ?? 1;
-                $descriptionIndex = $headerMap['description'] ?? 2;
-                $purchasePriceIndex = $headerMap['purchase_price'] ?? 3;
-                $sellingPriceIndex = $headerMap['selling_price'] ?? 4;
-                $currentStockIndex = $headerMap['current_stock'] ?? 5;
-                $alertQuantityIndex = $headerMap['alert_quantity'] ?? 6;
-                $expiryDateIndex = $headerMap['expiry_date'] ?? 7;
-                $categoryNameIndex = $headerMap['category_name'] ?? 8;
-                $brandNameIndex = $headerMap['brand_name'] ?? 9;
-                $unitNameIndex = $headerMap['unit_name'] ?? 10;
-                $supplierNameIndex = $headerMap['supplier_name'] ?? 11;
-
-                // Basic validation: row must have data
-                if (empty($row) || !isset($row[$nameIndex]) || trim($row[$nameIndex] ?? '') === '') {
-                    continue;
+                $name = $cell($row, 'name');
+                if ($name === '') {
+                    continue;   // blank line
                 }
+                $sku = $cell($row, 'sku') ?: null;
+                $nameKey = mb_strtolower($name);
 
-                $name = trim($row[$nameIndex] ?? '');
-                $sku = !empty($row[$skuIndex]) ? trim($row[$skuIndex]) : null;
-                $nameLower = strtolower($name);
-
-                // Check if Name or SKU was already seen in this CSV batch
-                if (in_array($nameLower, $processedNames) || ($sku && in_array($sku, $processedSkus))) {
+                // Already in the shop, or earlier in this file (SKU, or the name when there is no SKU)
+                if (($sku && isset($existingSkus[mb_strtolower($sku)])) || (!$sku && isset($existingNames[$nameKey]))) {
                     $skipCount++;
                     continue;
                 }
 
-                // Check if already exists in DB (by SKU or Name)
-                $existing = null;
-                if ($sku) {
-                    $existing = Product::where('sku', $sku)->first();
-                } else {
-                    $existing = Product::where('name', $name)->first();
-                }
+                $purchase = $this->bulkNumber($cell($row, 'purchase_price'));
+                $selling = $this->bulkNumber($cell($row, 'selling_price'));
+                $stock = $this->bulkNumber($cell($row, 'current_stock'));
+                $alert = $this->bulkNumber($cell($row, 'alert_quantity'));
+                $expiry = $this->bulkDate($cell($row, 'expiry_date'));
 
-                if ($existing) {
-                    $skipCount++;
-                    $processedNames[] = $nameLower;
-                    if ($sku) $processedSkus[] = $sku;
+                $problems = [];
+                if ($selling === null || $selling === false || $selling <= 0) {
+                    $problems[] = 'selling price is missing or not a number';
+                }
+                foreach (['purchase price' => $purchase, 'stock' => $stock, 'alert quantity' => $alert] as $label => $value) {
+                    if ($value === false || ($value !== null && $value < 0)) {
+                        $problems[] = "$label \"" . $cell($row, str_replace(' ', '_', $label === 'stock' ? 'current_stock' : $label)) . '" is not a valid number';
+                    }
+                }
+                if ($expiry === false) {
+                    $problems[] = 'expiry date "' . $cell($row, 'expiry_date') . '" is not a date (use 31/12/2027)';
+                }
+                if ($problems) {
+                    $errorCount++;
+                    $errors[] = "Row $rowNumber ($name): " . implode('; ', $problems) . '.';
                     continue;
-                }
-
-                // Map foreign keys - auto-create category and brand if not found
-                $categoryId = null;
-                if (!empty($row[$categoryNameIndex])) {
-                    $catName = trim($row[$categoryNameIndex]);
-                    if ($catName !== '') {
-                        if (isset($categories[$catName])) {
-                            $categoryId = $categories[$catName];
-                            \Log::info('BulkUpload: using existing category from cache', ['name' => $catName, 'id' => $categoryId, 'row' => $rowNumber]);
-                        } else {
-                            try {
-                                $category = Category::firstOrCreate(
-                                    ['name' => $catName],
-                                    ['category_code' => null, 'description' => null]
-                                );
-                                $categoryId = $category->id;
-                                $categories[$catName] = $categoryId;
-                                \Log::info('BulkUpload: created or found category', ['name' => $catName, 'id' => $categoryId, 'row' => $rowNumber]);
-                            } catch (\Exception $e) {
-                                \Log::error('BulkUpload: failed to create category', ['name' => $catName, 'error' => $e->getMessage(), 'row' => $rowNumber]);
-                                // If creation fails, leave category null and continue
-                            }
-                        }
-                    }
-                }
-
-                $brandId = null;
-                if (!empty($row[$brandNameIndex])) {
-                    $brandName = trim($row[$brandNameIndex]);
-                    if ($brandName !== '') {
-                        if (isset($brands[$brandName])) {
-                            $brandId = $brands[$brandName];
-                            \Log::info('BulkUpload: using existing brand from cache', ['name' => $brandName, 'id' => $brandId, 'row' => $rowNumber]);
-                        } else {
-                            try {
-                                $brand = Brand::firstOrCreate(
-                                    ['name' => $brandName],
-                                    ['note' => null]
-                                );
-                                $brandId = $brand->id;
-                                $brands[$brandName] = $brandId;
-                                \Log::info('BulkUpload: created or found brand', ['name' => $brandName, 'id' => $brandId, 'row' => $rowNumber]);
-                            } catch (\Exception $e) {
-                                \Log::error('BulkUpload: failed to create brand', ['name' => $brandName, 'error' => $e->getMessage(), 'row' => $rowNumber]);
-                                // If creation fails, leave brand null and continue
-                            }
-                        }
-                    }
-                }
-
-                $unitId = null;
-                if (!empty($row[$unitNameIndex])) {
-                    $unitName = trim($row[$unitNameIndex]);
-                    if ($unitName !== '') {
-                        $unitKey = strtolower($unitName);
-                        if (isset($unitsNormalized[$unitKey])) {
-                            $unitId = $unitsNormalized[$unitKey];
-                            \Log::info('BulkUpload: using existing unit from normalized map', ['name' => $unitName, 'id' => $unitId, 'row' => $rowNumber]);
-                        } elseif (isset($newUnitsCreated[$unitKey])) {
-                            $unitId = $newUnitsCreated[$unitKey];
-                            \Log::info('BulkUpload: using newly created unit from cache', ['name' => $unitName, 'id' => $unitId, 'row' => $rowNumber]);
-                        } else {
-                            try {
-                                $unit = Unit::firstOrCreate(['name' => $unitName], ['short_name' => null, 'allow_decimal' => 1]);
-                                $unitId = $unit->id;
-                                $units[$unitName] = $unitId;
-                                $unitsNormalized[$unitKey] = $unitId;
-                                $newUnitsCreated[$unitKey] = $unitId;
-                                \Log::info('BulkUpload: created or found unit', ['name' => $unitName, 'id' => $unitId, 'row' => $rowNumber]);
-                            } catch (\Exception $e) {
-                                \Log::error('BulkUpload: failed to create unit', ['name' => $unitName, 'error' => $e->getMessage(), 'row' => $rowNumber]);
-                            }
-                        }
-                    }
-                }
-
-                $supplierId = null;
-                if (!empty($row[$supplierNameIndex])) {
-                    $supName = trim($row[$supplierNameIndex]);
-                    if ($supName !== '') {
-                        if (isset($suppliers[$supName])) {
-                            $supplierId = $suppliers[$supName];
-                            \Log::info('BulkUpload: using existing supplier from cache', ['name' => $supName, 'id' => $supplierId, 'row' => $rowNumber]);
-                        } else {
-                            try {
-                                $supplier = Contact::firstOrCreate(
-                                    ['name' => $supName, 'type' => 'supplier'],
-                                    ['email' => null, 'phone' => null, 'address' => null, 'city' => null, 'country' => null, 'notes' => null, 'contact_person' => null, 'tax_number' => null, 'created_by' => auth()->id()]
-                                );
-                                $supplierId = $supplier->id;
-                                $suppliers[$supName] = $supplierId;
-                                \Log::info('BulkUpload: created or found supplier', ['name' => $supName, 'id' => $supplierId, 'row' => $rowNumber]);
-                            } catch (\Exception $e) {
-                                \Log::error('BulkUpload: failed to create supplier', ['name' => $supName, 'error' => $e->getMessage(), 'row' => $rowNumber]);
-                            }
-                        }
-                    }
-                }
-
-                // Prepare date
-                $expiryDate = null;
-                if (!empty($row[$expiryDateIndex])) {
-                    try { $expiryDate = \Carbon\Carbon::parse($row[$expiryDateIndex])->format('Y-m-d'); } catch (\Exception $e) {}
-                }
-
-                $productData = [
-                    'name' => $name,
-                    'sku' => $sku,
-                    'description' => $row[$descriptionIndex] ?? null,
-                    'purchase_price' => !empty($row[$purchasePriceIndex]) ? (float)$row[$purchasePriceIndex] : 0,
-                    'selling_price' => !empty($row[$sellingPriceIndex]) ? (float)$row[$sellingPriceIndex] : 0,
-                    'current_stock' => !empty($row[$currentStockIndex]) ? (float)$row[$currentStockIndex] : 0,
-                    'alert_quantity' => !empty($row[$alertQuantityIndex]) ? (float)$row[$alertQuantityIndex] : 10,
-                    'expiry_date' => $expiryDate,
-                    'category_id' => $categoryId,
-                    'brand_id' => $brandId,
-                    'unit_id' => $unitId,
-                    'supplier_id' => $supplierId,
-                    'business_location' => setting('system_name'),
-                    'product_type' => 'Single',
-                    'last_purchase_price' => !empty($row[3]) ? (float)$row[3] : 0,
-                    'last_purchase_date' => now(),
-                ];
-
-                // Auto-generate SKU if still empty - uses the SAME generator
-                // as store(), seeded once per upload above.
-                if (empty($productData['sku'])) {
-                    $productData['sku'] = $this->generateUniqueSku($processedSkus);
                 }
 
                 try {
+                    $productData = [
+                        'name' => $name,
+                        'sku' => $sku ?? $this->generateUniqueSku($processedSkus),
+                        'description' => $cell($row, 'description') ?: null,
+                        'purchase_price' => $purchase ?? 0,
+                        'selling_price' => $selling,
+                        'current_stock' => $stock ?? 0,
+                        'alert_quantity' => $alert ?? 10,
+                        'expiry_date' => $expiry,
+                        'category_id' => $this->bulkLookup($categories, $cell($row, 'category_name'),
+                            fn ($n) => Category::create(['name' => $n, 'category_code' => null, 'description' => null])),
+                        'brand_id' => $this->bulkLookup($brands, $cell($row, 'brand_name'),
+                            fn ($n) => Brand::create(['name' => $n, 'note' => null])),
+                        'unit_id' => $this->bulkLookup($units, $cell($row, 'unit_name'),
+                            fn ($n) => Unit::create(['name' => $n, 'short_name' => mb_substr($n, 0, 10), 'allow_decimal' => 1])),
+                        'supplier_id' => $this->bulkLookup($suppliers, $cell($row, 'supplier_name'),
+                            fn ($n) => Contact::create(['name' => $n, 'type' => 'supplier', 'created_by' => auth()->id()])),
+                        'business_location' => setting('system_name'),
+                        'product_type' => 'Single',
+                        'last_purchase_price' => $purchase ?? 0,
+                        'last_purchase_date' => now(),
+                    ];
+
                     $product = Product::create($productData);
-                    
-                    $processedNames[] = $nameLower;
-                    if ($product->sku) $processedSkus[] = $product->sku;
-                    
+
+                    $existingSkus[mb_strtolower($product->sku)] = true;
+                    $existingNames[$nameKey] = true;
+                    $processedSkus[] = $product->sku;
                     $successCount++;
 
                     if ($productData['current_stock'] > 0) {
@@ -845,15 +761,11 @@ class ProductController extends Controller
                 } catch (\Illuminate\Database\QueryException $e) {
                     if ($this->isUniqueConstraintViolation($e)) {
                         $skipCount++;
-                        $processedNames[] = $nameLower;
-                        if ($sku) $processedSkus[] = $sku;
                         continue;
                     }
                     $errorCount++;
-                    $errors[] = "Row $rowNumber ($name): " . $e->getMessage();
-                } catch (\Exception $e) {
-                    $errorCount++;
-                    $errors[] = "Row $rowNumber ($name): " . $e->getMessage();
+                    $errors[] = "Row $rowNumber ($name): could not be saved.";
+                    \Log::error('BulkUpload: row failed', ['row' => $rowNumber, 'error' => $e->getMessage()]);
                 }
             }
 
@@ -863,15 +775,17 @@ class ProductController extends Controller
             $message = "Upload Summary: $successCount created, $skipCount skipped (already exist), $errorCount errors.";
 
             if ($errorCount > 0) {
-                return redirect()->back()->with('success', $message)->with('error_details', array_slice($errors, 0, 50)); // Limit error display
+                return redirect()->back()->with('success', $message)->with('error_details', array_slice($errors, 0, 50));
             }
 
             return redirect()->route('products.index')->with('success', $message);
 
         } catch (\Exception $e) {
             DB::rollback();
-            if (isset($handle)) fclose($handle);
-            return redirect()->back()->with('error', 'Critical System Error: ' . $e->getMessage());
+            fclose($handle);
+            \Log::error('BulkUpload: failed', ['error' => $e->getMessage()]);
+
+            return redirect()->back()->with('error', 'The upload failed and nothing was saved. Check the file and try again.');
         }
     }
 }

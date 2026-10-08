@@ -6,7 +6,8 @@
     <div class="app-main">
         <header class="app-topbar" id="app-topbar"></header>
         <main class="app-content">
-            <h1 class="h4 fw-bold mb-3">User Management</h1>
+            @include('settings._tabs')
+            <h1 class="h5 fw-bold mb-3">Users</h1>
             
             <div class="card border mb-3">
                 <div class="card-body py-2">

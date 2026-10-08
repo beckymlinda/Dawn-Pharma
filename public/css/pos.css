@@ -1270,3 +1270,13 @@ select.pay-method.pay-more-select.active { background-color: #ecfdf5; }
   .pay-label { margin-bottom: .25rem; }
   .pay-footer { padding-top: .5rem; }
 }
+
+/* Split: a method still to be chosen */
+.payment-method-select.needs-choice { border-color: #f59e0b; background-color: #fffbeb; color: #92400e; font-weight: 600; }
+
+/* Product tiles: names are never cut through a line (tiles grow to fit instead) */
+.pos-tile { height: auto; }
+.pos-tile > * { flex-shrink: 0; }
+/* Up to 3 lines so the strength/form (e.g. "625mg Tablets") stays visible */
+.pos-tile-name { line-height: 1.3; -webkit-line-clamp: 3; max-height: calc(1.3em * 3 + 2px); padding-bottom: 1px; }
+.pos-product-grid { grid-auto-rows: minmax(min-content, auto); }

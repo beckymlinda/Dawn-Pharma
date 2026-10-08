@@ -36,20 +36,26 @@ POSPayments.init = function() {
 };
 
 /**
- * Payment methods offered at the till (keys match the server's PaymentMethods)
+ * Payment methods offered at the till: the ones switched on in Settings → Payment
+ * methods, in the shop's order (the page sets window.POS_PAYMENT_METHODS). Keys
+ * match the server's PaymentMethods. The first five are tiles; the rest are under "More…".
  */
-POSPayments.METHODS = [
-    // The first five are shown as tiles; the rest are under "More…"
-    { key: 'cash', label: 'Cash', icon: 'bi-cash-stack', tile: true },
-    { key: 'airtel_money', label: 'Airtel Money', icon: 'bi-phone', tile: true },
-    { key: 'mpamba', label: 'TNM Mpamba', icon: 'bi-phone-fill', tile: true },
-    { key: 'card', label: 'Card', icon: 'bi-credit-card', tile: true },
-    { key: 'bank_transfer', label: 'Bank transfer', icon: 'bi-bank', tile: true },
+POSPayments.METHODS = (window.POS_PAYMENT_METHODS && window.POS_PAYMENT_METHODS.length ? window.POS_PAYMENT_METHODS : [
+    { key: 'cash', label: 'Cash', icon: 'bi-cash-stack' },
+    { key: 'airtel_money', label: 'Airtel Money', icon: 'bi-phone' },
+    { key: 'mpamba', label: 'TNM Mpamba', icon: 'bi-phone-fill' },
+    { key: 'card', label: 'Card', icon: 'bi-credit-card' },
+    { key: 'bank_transfer', label: 'Bank transfer', icon: 'bi-bank' },
     { key: 'national_bank', label: 'National Bank', icon: 'bi-bank2' },
     { key: 'standard_bank', label: 'Standard Bank', icon: 'bi-building' },
     { key: 'cheque', label: 'Cheque', icon: 'bi-journal-text' },
     { key: 'advance', label: 'Advance', icon: 'bi-wallet2' }
-];
+]).map(function(m, i) { return { key: m.key, label: m.label, icon: m.icon || 'bi-wallet', tile: i < 5 }; });
+
+/** Names come from the shop's settings, so escape them before putting them in HTML */
+POSPayments.esc = function(text) {
+    return String(text).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+};
 
 POSPayments.methodLabel = function(key) {
     const method = POSPayments.METHODS.find(function(m) { return m.key === key; });
@@ -126,33 +132,37 @@ POSPayments.renderMethods = function() {
     const tiles = POSPayments.METHODS.filter(function(m) { return m.tile; }).map(function(m) {
         const active = m.key === current;
         return '<button type="button" role="radio" aria-checked="' + active + '" class="pay-method' + (active ? ' active' : '') + '" data-method="' + m.key + '">' +
-            '<i class="bi ' + m.icon + '"></i><span>' + m.label + '</span></button>';
+            '<i class="bi ' + POSPayments.esc(m.icon) + '"></i><span>' + POSPayments.esc(m.label) + '</span></button>';
     }).join('');
     const more = POSPayments.METHODS.filter(function(m) { return !m.tile; });
     const moreActive = more.some(function(m) { return m.key === current; });
-    const select = '<select class="pay-method pay-more-select' + (moreActive ? ' active' : '') + '" aria-label="Other payment methods">' +
+    // "More…" only when the shop has more than five methods switched on
+    const select = !more.length ? '' : '<select class="pay-method pay-more-select' + (moreActive ? ' active' : '') + '" aria-label="Other payment methods">' +
         '<option value=""' + (moreActive ? '' : ' selected') + ' disabled>More…</option>' +
-        more.map(function(m) { return '<option value="' + m.key + '"' + (m.key === current ? ' selected' : '') + '>' + m.label + '</option>'; }).join('') +
+        more.map(function(m) { return '<option value="' + m.key + '"' + (m.key === current ? ' selected' : '') + '>' + POSPayments.esc(m.label) + '</option>'; }).join('') +
         '</select>';
     box.innerHTML = tiles + select;
 };
 
-/** Quick cash buttons: exact amount and the next round amounts customers usually hand over */
+/**
+ * Quick cash buttons: what a customer can actually hand over with Malawian notes
+ * (500, 1,000, 2,000, 5,000): the bill rounded up to the next 1,000, 2,000 and
+ * 5,000, plus one bigger round amount. E.g. 3,000 -> Exact, 4,000, 5,000, 10,000.
+ */
+POSPayments.quickCashAmounts = function(total) {
+    const up = function(step) { return Math.ceil(total / step) * step; };
+    const fives = up(5000);
+    const candidates = [up(1000), up(2000), fives, fives + 5000, up(10000) + 10000];
+    // Nobody pays a 2,000 bill with 20,000: keep suggestions within about five times the bill
+    const limit = Math.max(total * 5, 10000);
+    const above = Array.from(new Set(candidates.filter(function(v) { return v > total && v <= limit; }))).sort(function(a, b) { return a - b; });
+    return [total].concat(above.slice(0, 3));
+};
+
 POSPayments.renderQuickCash = function() {
     const box = document.getElementById('payQuickCash');
     if (!box) return;
-    const total = POSPayments.state.total;
-    const options = [total];
-    [500, 1000, 5000, 10000].forEach(function(step) {
-        const up = Math.ceil(total / step) * step;
-        if (up > total) options.push(up);
-    });
-    [2000, 5000, 10000, 20000, 50000].forEach(function(note) {
-        if (note > total) options.push(note);
-    });
-    const unique = Array.from(new Set(options.map(POSPayments.round2))).sort(function(a, b) { return a - b; }).slice(0, 5);
-
-    box.innerHTML = unique.map(function(value, i) {
+    box.innerHTML = POSPayments.quickCashAmounts(POSPayments.round2(POSPayments.state.total)).map(function(value, i) {
         return '<button type="button" class="pay-quick-btn" data-amount="' + value + '">' +
             (i === 0 ? 'Exact' : Number(value).toLocaleString('en-US')) + '</button>';
     }).join('');
@@ -165,11 +175,11 @@ POSPayments.showMode = function(mode) {
     document.getElementById('paySplitToggle').classList.toggle('d-none', mode === 'split');
 
     if (mode === 'split' && POSPayments.state.splitLines.length === 0) {
-        // First line: the method chosen so far, amount typed by the cashier.
-        // Last line fills itself with whatever is left ("auto").
+        // Cash first with the full amount: the cashier lowers it to what was paid in cash,
+        // the next line fills itself with the rest ("auto"), and they choose its method
         POSPayments.state.splitLines = [
-            { method: POSPayments.state.method, amount: '', auto: false },
-            { method: POSPayments.state.method === 'cash' ? 'airtel_money' : 'cash', amount: POSPayments.state.total, auto: true }
+            { method: 'cash', amount: POSPayments.state.total, auto: false },
+            { method: '', amount: 0, auto: true }
         ];
     }
     if (mode === 'split') POSPayments.renderSplitLines();
@@ -181,13 +191,14 @@ POSPayments.renderSplitLines = function() {
     const list = document.getElementById('paymentMethodsList');
     if (!list) return;
     const options = function(selected) {
-        return POSPayments.METHODS.map(function(m) {
-            return '<option value="' + m.key + '"' + (m.key === selected ? ' selected' : '') + '>' + m.label + '</option>';
-        }).join('');
+        return '<option value="" disabled' + (selected ? '' : ' selected') + '>Choose method…</option>' +
+            POSPayments.METHODS.map(function(m) {
+                return '<option value="' + m.key + '"' + (m.key === selected ? ' selected' : '') + '>' + POSPayments.esc(m.label) + '</option>';
+            }).join('');
     };
     list.innerHTML = POSPayments.state.splitLines.map(function(line, i) {
         return '<div class="pay-split-line payment-method-item" data-line="' + i + '">' +
-            '<select class="form-select payment-method-select" data-line="' + i + '" aria-label="Payment method ' + (i + 1) + '">' + options(line.method) + '</select>' +
+            '<select class="form-select payment-method-select' + (line.method ? '' : ' needs-choice') + '" data-line="' + i + '" aria-label="Payment method ' + (i + 1) + '">' + options(line.method) + '</select>' +
             '<div class="input-group"><span class="input-group-text">MWK</span>' +
             '<input type="number" class="form-control payment-amount' + (line.auto ? ' is-auto' : '') + '" data-line="' + i + '" min="0" step="1" inputmode="decimal" placeholder="0" value="' + (line.amount === '' ? '' : line.amount) + '" aria-label="Amount ' + (i + 1) + '"' + (line.auto ? ' title="Filled with the remaining balance"' : '') + '></div>' +
             (POSPayments.state.splitLines.length > 2 ? '<button type="button" class="btn btn-outline-danger pay-remove" data-line="' + i + '" aria-label="Remove"><i class="bi bi-x-lg"></i></button>' : '') +
@@ -243,8 +254,13 @@ POSPayments.computeSettlement = function() {
         result.payments = [{ method: method, amount: total }];
     } else {
         let cash = 0;
+        let unchosen = 0;
         POSPayments.state.splitLines.forEach(function(line) {
             const amount = POSPayments.round2(line.amount);
+            if (amount > 0 && !line.method) {
+                unchosen += amount;
+                return;
+            }
             if (amount > 0) {
                 result.payments.push({ method: line.method, amount: amount });
                 result.paid += amount;
@@ -257,10 +273,15 @@ POSPayments.computeSettlement = function() {
         // Only cash can be handed back as change; anything else must match exactly
         result.change = over > 0 ? Math.min(over, cash) : 0;
         result.amountGiven = result.paid;
-        if (over > 0 && over > cash) {
+        result.paid = POSPayments.round2(result.paid + unchosen);
+        result.remaining = Math.max(0, POSPayments.round2(total - result.paid));
+        result.amountGiven = result.paid;
+        if (unchosen > 0) {
+            result.problem = 'Choose the payment method for ' + POSApp.utils.formatCurrency(unchosen);
+        } else if (over > 0 && over > cash) {
             result.problem = 'Only cash can be more than the amount due. Reduce the other amounts.';
         } else if (result.payments.length < 2) {
-            result.problem = 'Enter amounts for at least two methods, or use one method.';
+            result.problem = 'Lower the cash amount, then choose the method for the rest.';
         }
     }
 
@@ -360,11 +381,9 @@ POSPayments.bindPaymentModal = function() {
         if (e.target.closest('#paySplitToggle')) { POSPayments.showMode('split'); return; }
         if (e.target.closest('#paySingleToggle')) { POSPayments.state.splitLines = []; POSPayments.showMode('single'); return; }
         if (e.target.closest('#payAddLine')) {
-            const used = POSPayments.state.splitLines.map(function(l) { return l.method; });
-            const next = POSPayments.METHODS.find(function(m) { return used.indexOf(m.key) === -1; });
             // Amounts typed so far stay; the new line takes what is left
             POSPayments.state.splitLines.forEach(function(l) { l.auto = false; });
-            POSPayments.state.splitLines.push({ method: next ? next.key : 'cash', amount: '', auto: true });
+            POSPayments.state.splitLines.push({ method: '', amount: '', auto: true });
             POSPayments.fillAutoLine();
             POSPayments.renderSplitLines();
             POSPayments.updatePaymentSummary();
@@ -405,6 +424,7 @@ POSPayments.bindPaymentModal = function() {
         }
         if (e.target.classList.contains('payment-method-select')) {
             POSPayments.state.splitLines[+e.target.dataset.line].method = e.target.value;
+            e.target.classList.remove('needs-choice');
             POSPayments.updatePaymentSummary();
         }
     });

@@ -32,7 +32,8 @@ class UnitController extends Controller
 
     public function show(Unit $unit)
     {
-        return view('units.show', compact('unit'));
+        // No separate details page: open it for editing
+        return redirect()->route('units.edit', $unit);
     }
 
     public function edit(Unit $unit)

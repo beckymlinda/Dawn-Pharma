@@ -351,7 +351,11 @@ class SaleController extends Controller
                 ? $sale->payments->map(fn ($p) => ['method' => $p->method, 'amount' => (float) $p->amount])->values()
                 : collect([['method' => $sale->payment_method === 'split' ? 'cash' : $sale->payment_method, 'amount' => (float) $sale->total_amount]]));
 
-        $methods = PaymentMethods::getDisplayNames();
+        // Methods that are on, plus whatever this sale was already paid with (even if since switched off)
+        $methods = PaymentMethods::enabledNames();
+        foreach ($payments as $p) {
+            $methods += PaymentMethods::enabledNames($p['method']);
+        }
 
         return view('pos.sale-edit', compact('sale', 'products', 'original', 'items', 'payments', 'methods', 'isSupervisor'));
     }

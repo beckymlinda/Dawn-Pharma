@@ -58,7 +58,7 @@
 
         <!-- Low Stock -->
         <div class="col-6 col-lg-3">
-            <a href="{{ route('reports.low-stock') }}" class="text-decoration-none h-100 d-block">
+            <a @if(auth()->user()->hasPermission('view_stock_report')) href="{{ route('reports.low-stock') }}" @endif class="text-decoration-none h-100 d-block">
                 <div class="stat-card p-3 p-md-4 rounded-4 bg-white shadow-sm border-0 h-100 clickable-card">
                     <div class="d-flex justify-content-between align-items-start mb-3">
                         <div class="icon-box {{ $lowStockItems > 0 ? 'bg-danger-soft' : 'bg-success-soft' }} rounded-3 p-3">
@@ -74,7 +74,7 @@
 
         <!-- Expiry Items -->
         <div class="col-6 col-lg-3">
-            <a href="{{ route('reports.stock-expiry') }}" class="text-decoration-none h-100 d-block">
+            <a @if(auth()->user()->hasPermission('view_stock_expiry_report')) href="{{ route('reports.stock-expiry') }}" @endif class="text-decoration-none h-100 d-block">
                 <div class="stat-card p-3 p-md-4 rounded-4 bg-white shadow-sm border-0 h-100 clickable-card">
                     <div class="d-flex justify-content-between align-items-start mb-3">
                         <div class="icon-box {{ $expiryItems > 0 ? 'bg-warning-soft' : 'bg-success-soft' }} rounded-3 p-3">

@@ -119,7 +119,7 @@ Paid:      MWK 350.00
 Change:    MWK 0.00
 ===============================
 Thank you for your purchase!    ← Footer
-Powered by EDUC Consultancy
+Powered by Dawn Pharma
 ```
 
 ---

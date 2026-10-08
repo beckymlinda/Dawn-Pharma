@@ -20,12 +20,16 @@
                     <button class="btn btn-outline-secondary rounded-pill shadow-sm" onclick="window.print()">
                         <i class="bi bi-printer"></i> Print
                     </button>
+                    @if(auth()->user()->hasPermission('edit_pos_sell'))
                     <a href="{{ route('sales.edit', $sale->id) }}" class="btn btn-primary rounded-pill shadow-sm">
                         <i class="bi bi-pencil"></i> Edit Sale
                     </a>
+                    @endif
+                    @if(auth()->user()->hasPermission('delete_pos_sell'))
                     <button class="btn btn-danger rounded-pill shadow-sm" onclick="confirmDelete({{ $sale->id }})">
                         <i class="bi bi-trash"></i> Delete
                     </button>
+                    @endif
                 </div>
             </div>
 
