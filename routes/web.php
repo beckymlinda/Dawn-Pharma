@@ -65,6 +65,7 @@ Route::middleware(['auth', 'platform'])->prefix('platform')->name('platform.')->
     Route::post('/tenants/{tenant}/extend', [PlatformController::class, 'extend'])->name('tenants.extend');
     Route::post('/tenants/{tenant}/suspend', [PlatformController::class, 'suspend'])->name('tenants.suspend');
     Route::post('/tenants/{tenant}/reactivate', [PlatformController::class, 'reactivate'])->name('tenants.reactivate');
+    Route::put('/tenants/{tenant}/users/{userId}/password', [PlatformController::class, 'updatePassword'])->whereNumber('userId')->name('tenants.password');
     Route::post('/tenants/{tenant}/impersonate', [ImpersonationController::class, 'start'])->name('tenants.impersonate');
 
     // Proofs of payment uploaded by shops

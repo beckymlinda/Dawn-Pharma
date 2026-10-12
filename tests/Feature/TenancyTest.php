@@ -572,6 +572,39 @@ class TenancyTest extends TestCase
         $this->withSession($session)->post('/logout')->assertRedirect(route('platform.login'));
     }
 
+    public function test_platform_admin_can_change_a_shop_owners_password(): void
+    {
+        $vendor = $this->platformAdmin();
+        $other = $this->otherShop();
+        $owner = $this->inShop($other, fn () => User::first());
+        $url = "/platform/tenants/{$other->id}/users/{$owner->id}/password";
+
+        $this->actingAs($vendor)->get("/platform/tenants/{$other->id}")->assertOk()->assertSee('Change password');
+
+        $this->actingAs($vendor)->put($url, ['password' => 'short', 'password_confirmation' => 'short'])
+            ->assertSessionHasErrors('password', null, "password_{$owner->id}");
+
+        $this->actingAs($vendor)->put($url, ['password' => 'brand-new-pass', 'password_confirmation' => 'brand-new-pass'])
+            ->assertSessionHas('success');
+        $this->assertTrue(\Hash::check('brand-new-pass', $owner->fresh()->password));
+        $this->assertTrue($this->inShop($other, fn () => \App\Models\ActivityLog::where('action', 'password_reset')->exists()));
+
+        // The account must belong to the shop in the address
+        $this->actingAs($vendor)->put("/platform/tenants/{$this->tenant->id}/users/{$owner->id}/password",
+            ['password' => 'brand-new-pass', 'password_confirmation' => 'brand-new-pass'])->assertNotFound();
+    }
+
+    public function test_shop_users_cannot_change_passwords_through_the_portal(): void
+    {
+        $other = $this->otherShop();
+        $owner = $this->inShop($other, fn () => User::first());
+        $shopOwner = $this->userWithPermissions([], 'super_admin');
+
+        $this->actingAs($shopOwner)->put("/platform/tenants/{$other->id}/users/{$owner->id}/password",
+            ['password' => 'brand-new-pass', 'password_confirmation' => 'brand-new-pass']);
+        $this->assertTrue(\Hash::check('secret-password', $owner->fresh()->password));
+    }
+
     // --- Setup ---------------------------------------------------------------
 
     public function test_setup_page_creates_the_first_platform_admin_once(): void

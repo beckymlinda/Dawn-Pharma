@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ActivityLog;
 use App\Models\PaymentSubmission;
 use App\Models\Tenant;
 use App\Models\TenantPayment;
@@ -10,6 +11,7 @@ use App\Services\TenantProvisioner;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 /**
@@ -147,6 +149,31 @@ class PlatformController extends Controller
         $tenant->update(['status' => 'active', 'suspended_reason' => null]);
 
         return back()->with('success', "{$tenant->name} is active again.");
+    }
+
+    /** Set a new password for one of the shop's accounts (e.g. the owner forgot theirs) */
+    public function updatePassword(Request $request, Tenant $tenant, int $userId)
+    {
+        $user = User::withoutTenantScope()->where('tenant_id', $tenant->id)->findOrFail($userId);
+        $data = $request->validateWithBag("password_{$user->id}", [
+            'password' => 'required|string|min:8|confirmed',
+        ]);
+
+        $user->forceFill([
+            'password' => $data['password'],
+            // "Remember me" logins made with the old password stop working
+            'remember_token' => Str::random(60),
+        ])->save();
+
+        $by = $request->user()->name . ' (' . $request->user()->email . ')';
+        with_tenant($tenant, fn () => ActivityLog::create([
+            'user_id' => $user->id,
+            'action' => 'password_reset',
+            'description' => "Password for {$user->name} changed from the admin portal by {$by}",
+            'ip_address' => $request->ip(),
+        ]));
+
+        return back()->with('success', "Password changed for {$user->name}. Give them the new password to log in.");
     }
 
     /** Slugs a shop cannot have: the reserved list plus the first part of every page address */

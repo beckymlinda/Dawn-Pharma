@@ -125,7 +125,24 @@
             <div class="card-body p-4">
                 <h2 class="h6 fw-bold mb-3">Owner accounts</h2>
                 @forelse($owners as $owner)
-                    <div class="small"><strong>{{ $owner->name }}</strong><br><span class="text-muted">{{ $owner->email }}</span></div>
+                    @php($bag = $errors->getBag("password_{$owner->id}"))
+                    <div class="small {{ $loop->last ? '' : 'pb-3 mb-3 border-bottom' }}">
+                        <strong>{{ $owner->name }}</strong><br><span class="text-muted">{{ $owner->email }}</span>
+                        <details class="mt-2" {{ $bag->any() ? 'open' : '' }}>
+                            <summary class="text-primary" style="cursor: pointer;"><i class="bi bi-key me-1"></i>Change password</summary>
+                            <form method="POST" action="{{ route('platform.tenants.password', [$tenant, $owner->id]) }}" class="mt-2"
+                                  onsubmit="return confirm('Change the password for {{ addslashes($owner->name) }}? Their old password will stop working.')">
+                                @csrf
+                                @method('PUT')
+                                <input name="password" type="password" class="form-control form-control-sm mb-2 {{ $bag->has('password') ? 'is-invalid' : '' }}"
+                                       placeholder="New password (at least 8 characters)" minlength="8" required autocomplete="new-password" aria-label="New password">
+                                <input name="password_confirmation" type="password" class="form-control form-control-sm mb-2 {{ $bag->has('password') ? 'is-invalid' : '' }}"
+                                       placeholder="Type it again" minlength="8" required autocomplete="new-password" aria-label="Confirm new password">
+                                @if($bag->has('password'))<div class="text-danger mb-2">{{ $bag->first('password') }}</div>@endif
+                                <button class="btn btn-sm btn-outline-primary">Save new password</button>
+                            </form>
+                        </details>
+                    </div>
                 @empty
                     <p class="small text-muted mb-0">No owner account.</p>
                 @endforelse
