@@ -378,8 +378,10 @@
 <script>
     // Pass initial products data to the modular JavaScript
     var productsData = @json($products ?? []);
+    // Server time of these stock levels (offline.js compares it with figures saved on this device)
+    var productsStockAt = {{ now()->getTimestampMs() }};
     // Only the details printed on receipts; loss-prevention thresholds etc. stay on the server
-    @php($receiptSettings = \Illuminate\Support\Arr::only(business_settings(), ['system_name', 'location', 'telephone', 'email', 'tax_number', 'receipt_footer', 'powered_by']))
+    @php($receiptSettings = \Illuminate\Support\Arr::only(business_settings(), ['system_name', 'location', 'telephone', 'email', 'tax_number', 'receipt_footer', 'powered_by']) + ['receipt_logo' => brand_receipt_logo()])
     var systemSettings = @json($receiptSettings);
     console.log('Products loaded from server:', productsData.length);
     

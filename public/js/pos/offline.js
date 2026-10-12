@@ -62,6 +62,119 @@ POSOffline.pendingCount = function () {
     return POSOffline.pendingForMe().length;
 };
 
+// ─── Stock on this device ──────────────────────────────────────────────────
+/**
+ * The server does not know about sales still waiting on this device, so what can
+ * be sold here is: the server's stock minus those sales. Each product keeps the
+ * server's figure in server_stock and the sellable figure in current_stock.
+ *
+ * The last server figures are also kept on this device, because a POS page opened
+ * offline is an old saved copy whose stock may be out of date.
+ */
+POSOffline.STOCK_KEY = 'pos_stock_snapshot_v1';
+
+/** Quantity per product in sales saved on this device and not uploaded yet (all cashiers). */
+POSOffline.pendingQuantities = function () {
+    const totals = {};
+    POSOffline.read(POSOffline.QUEUE_KEY).forEach(function (entry) {
+        ((entry.data && entry.data.items) || []).forEach(function (item) {
+            const id = String(item.product_id);
+            totals[id] = (totals[id] || 0) + (parseFloat(item.quantity) || 0);
+        });
+    });
+    return totals;
+};
+
+POSOffline.readSnapshot = function () {
+    try {
+        const snap = JSON.parse(localStorage.getItem(POSOffline.STOCK_KEY) || 'null');
+        return snap && snap.stock ? snap : null;
+    } catch (e) {
+        return null;
+    }
+};
+
+POSOffline.saveSnapshot = function (products, at) {
+    const stock = {};
+    products.forEach(function (p) { stock[String(p.id)] = p.server_stock; });
+    try {
+        localStorage.setItem(POSOffline.STOCK_KEY, JSON.stringify({ at: at, stock: stock }));
+    } catch (e) {
+        console.warn('[Offline] Could not save stock levels on this device:', e);
+    }
+};
+
+/**
+ * Work out the sellable stock of each product.
+ * serverAt: when `products` come straight from the server, the server time of that
+ * data (their current_stock is then the server's figure); omit it otherwise.
+ */
+POSOffline.applyStock = function (products, serverAt) {
+    if (!Array.isArray(products)) return;
+    const fromServer = typeof serverAt === 'number';
+
+    if (fromServer) {
+        // Newer figures saved on this device win over an old copy of the page
+        const snap = POSOffline.readSnapshot();
+        const useSnap = snap && snap.at > serverAt;
+        products.forEach(function (p) {
+            const saved = useSnap ? snap.stock[String(p.id)] : undefined;
+            p.server_stock = typeof saved === 'number' ? saved : (parseFloat(p.current_stock) || 0);
+        });
+        if (!useSnap) POSOffline.saveSnapshot(products, serverAt);
+    }
+
+    const pending = POSOffline.pendingQuantities();
+    products.forEach(function (p) {
+        if (typeof p.server_stock !== 'number') p.server_stock = parseFloat(p.current_stock) || 0;
+        p.current_stock = Math.max(0, p.server_stock - (pending[String(p.id)] || 0));
+    });
+};
+
+/** A saved sale was recorded by the server: its stock is now gone there too. */
+POSOffline.stockUploaded = function (entry) {
+    const products = window.POSProducts && POSProducts.state.productsData;
+    const snap = POSOffline.readSnapshot();
+    ((entry.data && entry.data.items) || []).forEach(function (item) {
+        const id = String(item.product_id);
+        const qty = parseFloat(item.quantity) || 0;
+        const product = Array.isArray(products) && products.find(function (p) { return String(p.id) === id; });
+        if (product && typeof product.server_stock === 'number') {
+            product.server_stock = Math.max(0, product.server_stock - qty);
+        }
+        if (snap && typeof snap.stock[id] === 'number') {
+            snap.stock[id] = Math.max(0, snap.stock[id] - qty);
+        }
+    });
+    if (snap) {
+        try { localStorage.setItem(POSOffline.STOCK_KEY, JSON.stringify(snap)); } catch (e) {}
+    }
+};
+
+/** Cart lines asking for more than this device can sell, as messages. */
+POSOffline.stockShortages = function (items) {
+    const products = (window.POSProducts && POSProducts.state.productsData) || [];
+    const wanted = {};
+    (items || []).forEach(function (item) {
+        const id = String(item.product_id || (item.product && item.product.id));
+        wanted[id] = (wanted[id] || 0) + (parseFloat(item.quantity) || 0);
+    });
+    return Object.keys(wanted).map(function (id) {
+        const product = products.find(function (p) { return String(p.id) === id; });
+        if (!product) return null;   // not in this till's list: the server checks it
+        const available = parseFloat(product.current_stock) || 0;
+        if (wanted[id] <= available + 0.0001) return null;
+        return product.name + ': ' + available + ' available, ' + wanted[id] + ' in the cart';
+    }).filter(Boolean);
+};
+
+POSOffline.renderStock = function () {
+    if (window.POSGrid) {
+        window.POSGrid.renderCategories();
+        window.POSGrid.render();
+    }
+};
+
 // ─── Deciding when to save offline ─────────────────────────────────────────
 /**
  * True when a failed request means "the server could not be reached" rather than
@@ -167,6 +280,7 @@ POSOffline.uploadOne = function (entry) {
     }).then(function (response) {
         return response.json().catch(function () { return {}; }).then(function (body) {
             if (response.ok && body.success) {
+                POSOffline.stockUploaded(entry);
                 POSOffline.removeEntry(entry.invoice_no);
                 POSOffline.state.lastError = null;
                 POSOffline.state.needsLogin = false;
@@ -252,6 +366,13 @@ POSOffline.updateBadge = function () {
 
 // ─── Start ─────────────────────────────────────────────────────────────────
 POSOffline.init = function () {
+    // Stock in the page, less sales saved on this device (newer saved figures win over an old page)
+    if (window.POSProducts && Array.isArray(POSProducts.state.productsData)) {
+        POSOffline.applyStock(POSProducts.state.productsData,
+            typeof window.productsStockAt === 'number' ? window.productsStockAt : undefined);
+        POSOffline.renderStock();
+    }
+
     window.addEventListener('online', function () { POSOffline.sync(); });
     window.addEventListener('offline', POSOffline.updateBadge);
     setInterval(POSOffline.sync, POSOffline.SYNC_EVERY);

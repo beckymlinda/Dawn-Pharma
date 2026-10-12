@@ -13,7 +13,7 @@
         <div class="card-body p-4 p-md-5">
             <h1 class="h4 fw-bold mb-1">Admin portal</h1>
             <p class="text-muted small mb-4">For the system provider. Shop staff log in through their shop's link.</p>
-            <form method="POST" action="{{ url('/platform/login') }}">
+            <form method="POST" action="{{ url('/platform/login') }}" data-submit-once>
                 @csrf
                 <div class="mb-3">
                     <label for="email" class="form-label small fw-semibold">Email</label>
@@ -28,10 +28,11 @@
                     <input class="form-check-input" type="checkbox" name="remember" id="remember">
                     <label class="form-check-label small" for="remember">Keep me logged in</label>
                 </div>
-                <button class="btn btn-dark w-100">Log in</button>
+                <button class="btn btn-dark w-100" data-sending-text="Logging in…">Log in</button>
             </form>
         </div>
     </div>
 </div>
+<script src="{{ asset('js/submit-once.js') }}?v={{ filemtime(public_path('js/submit-once.js')) }}"></script>
 </body>
 </html>

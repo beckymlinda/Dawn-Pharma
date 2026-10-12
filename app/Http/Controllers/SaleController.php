@@ -266,34 +266,65 @@ class SaleController extends Controller
             'total_paid' => 'required|numeric',
             'sell_due' => 'nullable|numeric',
             'total_items' => 'required|integer',
-            'items' => 'required|array'
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|integer',
+            'items.*.quantity' => 'required|numeric|min:0.01',
+            'items.*.price' => 'required|numeric|min:0',
         ]);
 
-        $sale = Sale::create($data);
+        $sale = \Illuminate\Support\Facades\DB::transaction(function () use ($data) {
+            // Lock the products so another till cannot sell the same stock meanwhile
+            $wanted = collect($data['items'])->groupBy('product_id')->map->sum('quantity');
+            $products = Product::whereIn('id', $wanted->keys())->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            foreach ($wanted as $productId => $quantity) {
+                $product = $products->get($productId);
+                if (!$product) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['items' => "Product #{$productId} no longer exists."]);
+                }
+                if ((float) $product->current_stock < (float) $quantity) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['items' => "Not enough {$product->name} in stock: {$product->current_stock} available, {$quantity} requested."]);
+                }
+            }
 
-        foreach ($data['items'] as $it) {
-            $product = Product::find($it['product_id']);
-            $subtotal = $it['quantity'] * $it['price'];
-            SaleItem::create([
+            $sale = Sale::create(\Illuminate\Support\Arr::except($data, ['items']));
+
+            foreach ($data['items'] as $it) {
+                $product = $products->get($it['product_id']);
+                SaleItem::create([
+                    'sale_id' => $sale->id,
+                    'product_id' => $product->id,
+                    'quantity' => $it['quantity'],
+                    'price' => $it['price'],
+                    'subtotal' => $it['quantity'] * $it['price'],
+                    'purchase_cost' => $product->purchase_price,
+                ]);
+
+                $product->current_stock = (float) $product->current_stock - (float) $it['quantity'];
+                $product->save();
+
+                \App\Models\StockHistory::create([
+                    'product_id' => $product->id,
+                    'type' => 'Sale',
+                    'quantity_change' => -$it['quantity'],
+                    'new_quantity' => $product->current_stock,
+                    'unit_cost' => $product->purchase_price,
+                    'unit_price' => $it['price'],
+                    'date' => now()->toDateString(),
+                    'reference_no' => $sale->invoice_no,
+                    'customer_supplier' => $sale->customer_name ?? 'Walk-In Customer',
+                    'notes' => 'Sold in invoice #' . $sale->invoice_no,
+                ]);
+            }
+
+            // Create payment record (Crucial for summary accuracy)
+            Payment::create([
                 'sale_id' => $sale->id,
-                'product_id' => $it['product_id'],
-                'quantity' => $it['quantity'],
-                'price' => $it['price'],
-                'subtotal' => $subtotal,
+                'method' => $data['payment_method'] ?? 'cash',
+                'amount' => $data['total_paid'] ?? $data['total_amount']
             ]);
 
-            if ($product) {
-                $product->current_stock = max(0, $product->current_stock - $it['quantity']);
-                $product->save();
-            }
-        }
-
-        // Create payment record (Crucial for summary accuracy)
-        Payment::create([
-            'sale_id' => $sale->id,
-            'method' => $data['payment_method'] ?? 'cash',
-            'amount' => $data['total_paid'] ?? $data['total_amount']
-        ]);
+            return $sale;
+        });
 
         if (!$sale->register_id) {
             IntegrityEvent::record('sale_without_register', 'medium',

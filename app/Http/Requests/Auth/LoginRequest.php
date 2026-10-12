@@ -57,8 +57,11 @@ class LoginRequest extends FormRequest
         if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
             RateLimiter::hit($this->throttleKey());
 
+            // Name the shop: the browser may still have another shop selected from an earlier visit
             throw ValidationException::withMessages([
-                'email' => trans('auth.failed'),
+                'email' => tenant()
+                    ? 'These details do not match an account at ' . tenant()->name . '. If this is not your shop, enter your Shop code above.'
+                    : trans('auth.failed'),
             ]);
         }
 

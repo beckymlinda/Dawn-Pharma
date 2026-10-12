@@ -142,20 +142,24 @@ class SaleEditor
             throw ValidationException::withMessages(['items' => 'Nothing was changed.']);
         }
 
-        // Enough stock for any increase?
-        foreach ($lines as $pid => $line) {
-            $extra = $line['quantity'] - (float) ($originalQty[$pid] ?? 0);
-            if ($extra > 0 && (float) $line['product']->current_stock < $extra) {
-                throw ValidationException::withMessages(['items' => "Not enough {$line['product']->name} in stock: {$line['product']->current_stock} available, {$extra} more needed."]);
-            }
-        }
-
         $closedShift = (bool) optional($sale->register)->closed_at;
         $paymentMethod = $payments->count() > 1 ? 'split' : $payments[0]['method'];
 
         DB::transaction(function () use ($sale, $lines, $payments, $originalQty, $originalCost, $newTotal, $paymentMethod, $before, $reason, $via, $user, $closedShift) {
-            // 1. Stock: apply only the net change per product, with a movement record
-            $productIds = collect(array_keys($lines))->merge($originalQty->keys())->unique();
+            // 1. Stock: apply only the net change per product, with a movement record.
+            // Rows are locked first so a sale on another till cannot take the same stock meanwhile.
+            $productIds = collect(array_keys($lines))->merge($originalQty->keys())->unique()->sort()->values();
+            $locked = Product::whereIn('id', $productIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+
+            // Enough stock for any increase?
+            foreach ($lines as $pid => $line) {
+                $extra = round($line['quantity'] - (float) ($originalQty[$pid] ?? 0), 4);
+                $available = (float) optional($locked->get($pid))->current_stock;
+                if ($extra > 0 && $available < $extra) {
+                    throw ValidationException::withMessages(['items' => "Not enough {$line['product']->name} in stock: {$available} available, {$extra} more needed."]);
+                }
+            }
+
             foreach ($productIds as $pid) {
                 $oldQty = (float) ($originalQty[$pid] ?? 0);
                 $newQty = (float) ($lines[$pid]['quantity'] ?? 0);
@@ -163,7 +167,7 @@ class SaleEditor
                 if (abs($diff) < 0.0001) {
                     continue;
                 }
-                $product = Product::lockForUpdate()->find($pid);
+                $product = $locked->get($pid);
                 if (!$product) {
                     continue;
                 }

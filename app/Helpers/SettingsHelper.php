@@ -79,3 +79,67 @@ if (!function_exists('brand_favicon_url')) {
         return brand_image_exists(setting('favicon')) ? asset(setting('favicon')) : brand_logo_url();
     }
 }
+
+if (!function_exists('brand_receipt_logo')) {
+    /**
+     * The uploaded logo, made small for receipt printers: at most 160x60 px,
+     * black and white (thermal printers print no colour), returned as a data URI
+     * so the receipt prints straight away without downloading anything (offline too).
+     * Made once per uploaded file and kept in storage/app/receipt-logos.
+     * Null when no logo is uploaded or the image cannot be read.
+     */
+    function brand_receipt_logo(): ?string
+    {
+        $logo = setting('logo');
+        if (!brand_image_exists($logo)) {
+            return null;
+        }
+        $source = public_path($logo);
+
+        try {
+            // SVG is already small text; use it as it is (unless it is large)
+            if (strtolower(pathinfo($source, PATHINFO_EXTENSION)) === 'svg') {
+                return filesize($source) <= 30720 ? 'data:image/svg+xml;base64,' . base64_encode(file_get_contents($source)) : null;
+            }
+            if (!function_exists('imagecreatefromstring')) {
+                return null;
+            }
+
+            $cache = storage_path('app/receipt-logos/' . md5($source . '|' . filemtime($source)) . '.png');
+            if (!is_file($cache)) {
+                $image = @imagecreatefromstring(file_get_contents($source));
+                if (!$image) {
+                    return null;
+                }
+                [$w, $h] = [imagesx($image), imagesy($image)];
+                $scale = min(160 / $w, 60 / $h, 1);
+                [$nw, $nh] = [max(1, (int) round($w * $scale)), max(1, (int) round($h * $scale))];
+
+                // White background (transparent parts must not print black), then shrink and make grey
+                $small = imagecreatetruecolor($nw, $nh);
+                imagefill($small, 0, 0, imagecolorallocate($small, 255, 255, 255));
+                imagecopyresampled($small, $image, 0, 0, 0, 0, $nw, $nh, $w, $h);
+                imagefilter($small, IMG_FILTER_GRAYSCALE);
+                imagefilter($small, IMG_FILTER_CONTRAST, -20);
+                imagetruecolortopalette($small, true, 16);   // 16 greys: a few KB
+                for ($i = 0, $n = imagecolorstotal($small); $i < $n; $i++) {
+                    // Reducing colours can leave a slight tint; make each entry a true grey
+                    $c = imagecolorsforindex($small, $i);
+                    $grey = (int) round(($c['red'] + $c['green'] + $c['blue']) / 3);
+                    imagecolorset($small, $i, $grey, $grey, $grey);
+                }
+
+                if (!is_dir(dirname($cache))) {
+                    mkdir(dirname($cache), 0775, true);
+                }
+                imagepng($small, $cache, 9);
+            }
+
+            return 'data:image/png;base64,' . base64_encode(file_get_contents($cache));
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
+    }
+}

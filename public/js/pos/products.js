@@ -158,6 +158,9 @@ POSProducts.loadProducts = function() {
             const parsed = JSON.parse(cachedData);
             if (Date.now() - parsed.timestamp < POSProducts.state.cacheExpiry) {
                 console.log('Loading products from cache:', parsed.products.length);
+                if (window.POSOffline && POSOffline.applyStock) {
+                    POSOffline.applyStock(parsed.products);
+                }
                 POSProducts.state.productsData = parsed.products;
                 POSProducts.updateProductLoadingState(true);
                 POSProducts.state.isLoading = false;
@@ -206,6 +209,9 @@ POSProducts.loadProducts = function() {
         console.log('Product load response:', data);
         
         if (data.success && data.products) {
+            if (window.POSOffline && POSOffline.applyStock) {
+                POSOffline.applyStock(data.products, data.stock_at || Date.now());
+            }
             POSProducts.state.productsData = data.products;
             console.log('Products loaded successfully:', POSProducts.state.productsData.length);
             
@@ -417,6 +423,11 @@ POSProducts.refreshProductData = function() {
                 console.log('Old product stock:', oldProduct ? oldProduct.current_stock : 'Not found');
                 console.log('New product stock:', newProduct ? newProduct.current_stock : 'Not found');
                 
+                // Less the sales still waiting on this device, which the server does not know about yet
+                if (window.POSOffline && POSOffline.applyStock) {
+                    POSOffline.applyStock(data.products, data.stock_at || Date.now());
+                }
+
                 POSProducts.state.productsData.length = 0;
                 for (let k = 0; k < data.products.length; k++) {
                     POSProducts.state.productsData.push(data.products[k]);

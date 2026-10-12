@@ -7,7 +7,7 @@
     <!-- Session Status -->
     <x-auth-session-status class="mb-4" :status="session('status')" />
 
-    <form method="POST" action="{{ route('login') }}">
+    <form method="POST" action="{{ route('login') }}" data-submit-once>
         @csrf
 
         <!-- Shop: asked only when this browser has not opened a shop link -->
@@ -17,7 +17,7 @@
                 <a href="#" onclick="document.getElementById('shopField').classList.remove('d-none'); this.parentElement.classList.add('d-none'); return false;">Not your shop?</a>
             </p>
         @endif
-        <div class="mb-3 {{ tenant() && !$errors->has('shop') ? 'd-none' : '' }}" id="shopField">
+        <div class="mb-3 {{ tenant() && !$errors->has('shop') && !$errors->has('email') ? 'd-none' : '' }}" id="shopField">
             <label for="shop" class="form-label small fw-bold text-muted">Shop code</label>
             <div class="input-group">
                 <span class="input-group-text bg-light border-end-0"><i class="fas fa-store text-muted"></i></span>
@@ -64,14 +64,15 @@
         </div>
 
         <div class="d-grid mb-3">
-            <button type="submit" class="btn btn-brand py-2 fw-bold shadow-sm rounded-pill">
+            <button type="submit" class="btn btn-brand py-2 fw-bold shadow-sm rounded-pill" data-sending-text="Signing in…">
                 Sign In
             </button>
         </div>
-        
-        
+
+
     </form>
-    
+    <script src="{{ asset('js/submit-once.js') }}?v={{ filemtime(public_path('js/submit-once.js')) }}"></script>
+
     <style>
         .btn-brand {
             background-color: var(--brand-primary, #004d3d);

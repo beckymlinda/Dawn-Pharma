@@ -980,7 +980,8 @@ class POSController extends Controller
             
             return response()->json([
                 'success' => true,
-                'products' => $products
+                'products' => $products,
+                'stock_at' => now()->getTimestampMs(),
             ]);
         } catch (\Exception $e) {
             return response()->json([

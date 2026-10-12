@@ -473,6 +473,16 @@ POSPayments.finalizePayment = function() {
             return false;
         }
 
+        // A cart restored from earlier, or stock that dropped since items were added (e.g. sales
+        // saved offline on this till that the server does not know about yet)
+        if (window.POSOffline && POSOffline.stockShortages) {
+            const shortages = POSOffline.stockShortages(window.POSCart ? window.POSCart.state.items : []);
+            if (shortages.length) {
+                alert('Not enough stock for this sale:\n\n' + shortages.join('\n') + '\n\nReduce the quantity in the cart and try again.');
+                return false;
+            }
+        }
+
         const totalPayable = settlement.total;
         const notesElement = document.getElementById('paymentNotes');
         const notes = notesElement ? notesElement.value : '';
@@ -625,20 +635,22 @@ POSPayments.completeSale = function(paymentData) {
  * (uploaded later by public/js/pos/offline.js).
  */
 POSPayments.completeOffline = function(paymentData, requestData) {
+    // Only sell what this device knows is in stock (server stock less sales already saved here)
+    const shortages = POSOffline.stockShortages(requestData.items);
+    if (shortages.length) {
+        alert('Sale not completed: not enough stock.\n\n' + shortages.join('\n') + '\n\nReduce the quantity in the cart and try again.');
+        return;
+    }
+
     if (!POSOffline.queueSale(requestData, paymentData.total_amount)) {
         alert('This device could not save the sale (storage full or blocked). The sale was NOT recorded.');
         return;
     }
 
-    // Lower the stock shown on this till so the cashier sees roughly what is left
+    // Lower the stock shown on this till by the sale just saved
     if (window.POSProducts && Array.isArray(POSProducts.state.productsData)) {
-        (requestData.items || []).forEach(function(item) {
-            const id = item.product_id || (item.product && item.product.id);
-            const product = POSProducts.state.productsData.find(function(p) { return p.id == id; });
-            if (product) {
-                product.current_stock = Math.max(0, (parseFloat(product.current_stock) || 0) - (parseFloat(item.quantity) || 0));
-            }
-        });
+        POSOffline.applyStock(POSProducts.state.productsData);
+        POSOffline.renderStock();
     }
 
     POSPayments.completeSale(paymentData);
@@ -676,6 +688,10 @@ POSPayments.generateReceipt = function(paymentData) {
 
     // Header
     receiptContent += '<div style="text-align: center; margin-bottom: 15px; pt-1">';
+    // Uploaded logo, already shrunk and black-and-white on the server (a few KB, no download at print time)
+    if (settings.receipt_logo && /^data:image\//.test(settings.receipt_logo)) {
+        receiptContent += '<img src="' + settings.receipt_logo + '" alt="" style="display: block; margin: 0 auto 6px; max-width: 120px; max-height: 45px;">';
+    }
     receiptContent += '<h1 style="margin: 0; font-size: 22px; font-weight: bold; text-transform: uppercase;">' + esc(settings.system_name || '') + '</h1>';
     if (settings.location) {
         receiptContent += '<div style="font-size: 14px; margin: 4px 0;">' + esc(settings.location) + '</div>';
@@ -826,9 +842,25 @@ POSPayments.showReceiptAndPrint = function() {
     doc.write('</body></html>');
     doc.close();
 
-    // Print immediately
-    iframe.contentWindow.focus();
-    iframe.contentWindow.print();
+    // Print as soon as the logo has been drawn (it is embedded, so this is instant; never wait more than 1s)
+    var printed = false;
+    var printNow = function() {
+        if (printed) return;
+        printed = true;
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+    };
+    var pending = Array.prototype.filter.call(doc.images, function(img) { return !img.complete; });
+    if (!pending.length) {
+        printNow();
+    } else {
+        pending.forEach(function(img) {
+            img.onload = img.onerror = function() {
+                if (Array.prototype.every.call(doc.images, function(i) { return i.complete; })) printNow();
+            };
+        });
+        setTimeout(printNow, 1000);
+    }
 };
 
 /**
