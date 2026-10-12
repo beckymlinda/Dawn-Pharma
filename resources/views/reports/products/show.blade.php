@@ -43,7 +43,7 @@
         <div class="col-6 col-lg-3">
             <div class="card h-100"><div class="card-body">
                 <div class="text-muted small fw-bold text-uppercase">Purchased</div>
-                <h4 class="fw-bold mb-0 text-primary">{{ number_format($purchaseTotals->qty) }}</h4>
+                <h4 class="fw-bold mb-0 text-primary">{{ rtrim(rtrim(number_format($purchaseTotals->qty, 2), '0'), '.') }}</h4>
                 <small class="text-muted">{{ $purchaseTotals->count }} purchase(s) · {{ formatCurrency($purchaseTotals->amount) }}</small>
             </div></div>
         </div>
@@ -83,6 +83,7 @@
                     'purchases' => ['bi-truck', 'Purchases', $purchases->total()],
                     'adjustments' => ['bi-arrow-left-right', 'Stock Adjustments', $adjustments->total()],
                     'movements' => ['bi-clock-history', 'Stock Movements', $movements->total()],
+                    'daily' => ['bi-calendar3', 'Daily Stock', count($dailyStock)],
                     'activity' => ['bi-person-lines-fill', 'Activity', $activities->total()],
                 ] as $key => [$icon, $label, $count])
                     <li class="nav-item" role="presentation">
@@ -156,7 +157,7 @@
                 {{ $sales->links() }}
             </div>
 
-            <!-- Purchases -->
+            <!-- Purchases (stock-in adjustments and first stock are listed as purchases) -->
             <div class="tab-pane fade {{ $activeTab === 'purchases' ? 'show active' : '' }}" id="tab-purchases" role="tabpanel">
                 <div class="table-responsive">
                     <table class="table table-sm table-hover align-middle">
@@ -173,33 +174,35 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @forelse($purchases->getCollection()->groupBy(fn ($i) => \Carbon\Carbon::parse($i->purchased_at)->toDateString()) as $day => $items)
+                            @forelse($purchases->getCollection()->groupBy(fn ($r) => $r->at->toDateString()) as $day => $rows)
                                 <tr class="table-secondary">
                                     <td colspan="3" class="fw-bold">{{ \Carbon\Carbon::parse($day)->format('l, M d, Y') }}</td>
-                                    <td class="text-end fw-bold">{{ number_format($purchasesPerDay[$day]->qty ?? 0) }}</td>
+                                    <td class="text-end fw-bold">{{ rtrim(rtrim(number_format($purchasesPerDay[$day]->qty ?? 0, 2), '0'), '.') }}</td>
                                     <td></td>
                                     <td class="text-end fw-bold">{{ formatCurrency($purchasesPerDay[$day]->amount ?? 0) }}</td>
                                     <td colspan="2" class="small text-muted">day total</td>
                                 </tr>
-                                @foreach($items as $item)
-                                    @php($expiry = $item->expiry_date ?? $item->exp_date)
+                                @foreach($rows as $row)
                                     <tr>
                                         <td>
-                                            @if($item->purchase)
-                                                <a href="{{ route('purchases.show', $item->purchase) }}">{{ $item->purchase->reference_no }}</a>
+                                            @if($row->purchase)
+                                                <a href="{{ route('purchases.show', $row->purchase) }}">{{ $row->reference }}</a>
+                                            @else
+                                                {{ $row->kind === 'adjustment' ? 'Stock in' : 'First stock' }}
+                                                @if($row->reference)<br><small class="text-muted">{{ $row->reference }}</small>@endif
                                             @endif
                                         </td>
-                                        <td>{{ $item->purchase->supplier->name ?? '—' }}</td>
+                                        <td>{{ $row->supplier ?? '—' }}</td>
                                         <td>
-                                            <span class="badge bg-{{ ($item->purchase->status ?? '') === 'received' ? 'success' : 'warning' }} text-capitalize">
-                                                {{ $item->purchase->status ?? '—' }}
+                                            <span class="badge bg-{{ $row->status === 'received' ? 'success' : 'warning' }} text-capitalize">
+                                                {{ $row->status ?? '—' }}
                                             </span>
                                         </td>
-                                        <td class="text-end">{{ number_format($item->quantity) }}</td>
-                                        <td class="text-end">{{ formatCurrency($item->unit_cost) }}</td>
-                                        <td class="text-end">{{ formatCurrency($item->line_total) }}</td>
-                                        <td>{{ $expiry ? \Carbon\Carbon::parse($expiry)->format('M d, Y') : '—' }}</td>
-                                        <td><i class="bi bi-person me-1"></i>{{ $item->purchase->user->name ?? 'Unknown' }}</td>
+                                        <td class="text-end">{{ rtrim(rtrim(number_format($row->quantity, 2), '0'), '.') }}</td>
+                                        <td class="text-end">{{ formatCurrency($row->unit_cost) }}</td>
+                                        <td class="text-end">{{ formatCurrency($row->line_total) }}</td>
+                                        <td>{{ $row->expiry ? \Carbon\Carbon::parse($row->expiry)->format('M d, Y') : '—' }}</td>
+                                        <td><i class="bi bi-person me-1"></i>{{ $row->by ?? 'Unknown' }}</td>
                                     </tr>
                                 @endforeach
                             @empty
@@ -299,6 +302,44 @@
                     </table>
                 </div>
                 {{ $movements->links() }}
+            </div>
+
+            <!-- Daily stock -->
+            @php($qty = fn ($n) => rtrim(rtrim(number_format((float) $n, 2), '0'), '.'))
+            <div class="tab-pane fade {{ $activeTab === 'daily' ? 'show active' : '' }}" id="tab-daily" role="tabpanel">
+                <p class="small text-muted mb-2">
+                    Stock at the start (opening) and end (closing) of each day.
+                    {{ request('from') || request('to') ? 'Days in the selected period' : 'The last 30 days' }}, newest first; use From / To above for other days.
+                </p>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Date</th>
+                                <th class="text-end">Opening Stock</th>
+                                <th class="text-end">Received</th>
+                                <th class="text-end">Sold</th>
+                                <th class="text-end">Adjusted</th>
+                                <th class="text-end">Closing Stock</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($dailyStock as $day => $row)
+                                @php($quiet = !$row['received'] && !$row['sold'] && !$row['adjusted'])
+                                <tr class="{{ $quiet ? 'text-muted' : '' }}">
+                                    <td>{{ \Carbon\Carbon::parse($day)->format('D, M d, Y') }}{{ \Carbon\Carbon::parse($day)->isToday() ? ' (today)' : '' }}</td>
+                                    <td class="text-end">{{ $qty($row['opening']) }}</td>
+                                    <td class="text-end {{ $row['received'] ? 'text-success' : '' }}">{{ $row['received'] ? '+' . $qty($row['received']) : '—' }}</td>
+                                    <td class="text-end {{ $row['sold'] ? 'text-danger' : '' }}">{{ $row['sold'] ? '−' . $qty($row['sold']) : '—' }}</td>
+                                    <td class="text-end">{{ $row['adjusted'] ? ($row['adjusted'] > 0 ? '+' : '−') . $qty(abs($row['adjusted'])) : '—' }}</td>
+                                    <td class="text-end fw-semibold">{{ $qty($row['closing']) }}</td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="6" class="text-center text-muted py-4">No days in the selected period</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <!-- Activity -->

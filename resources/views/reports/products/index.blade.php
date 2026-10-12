@@ -27,8 +27,13 @@
                 <i class="bi bi-x-circle me-1"></i> Clear
             </button>
         </div>
+        <div class="col-md-auto ms-md-auto d-flex align-items-center gap-2">
+            <label for="stockDate" class="small fw-semibold text-nowrap mb-0">Daily stock for</label>
+            <input type="date" name="date" id="stockDate" class="form-control" value="{{ $stockDay->toDateString() }}" max="{{ today()->toDateString() }}">
+        </div>
     </form>
 
+    @php($qty = fn ($n) => rtrim(rtrim(number_format((float) $n, 2), '0'), '.'))
     <div class="card" id="productResults">
         <div class="card-body">
             <div class="table-responsive">
@@ -38,6 +43,8 @@
                             <th>Product</th>
                             <th>Category</th>
                             <th class="text-end">Selling Price</th>
+                            <th class="text-end" title="Stock at the start of {{ $stockDay->format('M d, Y') }}">Opening<br><small class="text-muted fw-normal">{{ $stockDay->isToday() ? 'today' : $stockDay->format('M d, Y') }}</small></th>
+                            <th class="text-end" title="Stock at the end of {{ $stockDay->format('M d, Y') }}">Closing<br><small class="text-muted fw-normal">{{ $stockDay->isToday() ? 'so far today' : $stockDay->format('M d, Y') }}</small></th>
                             <th class="text-end">Current Stock</th>
                             <th class="text-end">Total Sold</th>
                             <th class="text-end">Total Purchased</th>
@@ -54,6 +61,18 @@
                                 </td>
                                 <td>{{ $product->category->name ?? '—' }}</td>
                                 <td class="text-end">{{ formatCurrency($product->selling_price) }}</td>
+                                @php($day = $dailyStock[$product->id] ?? null)
+                                <td class="text-end">{{ $day ? $qty($day['opening']) : '—' }}</td>
+                                <td class="text-end">
+                                    <span class="fw-semibold">{{ $day ? $qty($day['closing']) : '—' }}</span>
+                                    @if($day && ($day['received'] || $day['sold'] || $day['adjusted']))
+                                        <br><small class="text-muted text-nowrap">
+                                            @if($day['received'])<span class="text-success">+{{ $qty($day['received']) }} in</span>@endif
+                                            @if($day['sold'])<span class="text-danger ms-1">−{{ $qty($day['sold']) }} sold</span>@endif
+                                            @if($day['adjusted'])<span class="ms-1">{{ $day['adjusted'] > 0 ? '+' : '−' }}{{ $qty(abs($day['adjusted'])) }} adj.</span>@endif
+                                        </small>
+                                    @endif
+                                </td>
                                 <td class="text-end">
                                     <span class="fw-bold {{ ($product->current_stock ?? 0) <= ($product->alert_quantity ?? 0) ? 'text-danger' : '' }}">
                                         {{ number_format($product->current_stock ?? 0) }}
@@ -61,7 +80,9 @@
                                     <small class="text-muted">{{ $product->unit->short_name ?? '' }}</small>
                                 </td>
                                 <td class="text-end">{{ number_format($product->total_sold ?? 0) }}</td>
-                                <td class="text-end">{{ number_format($product->total_purchased ?? 0) }}</td>
+                                <td class="text-end">
+                                    {{ $qty($product->total_purchased ?? 0) }}
+                                </td>
                                 <td>
                                     {{ $product->last_sold_at ? \Carbon\Carbon::parse($product->last_sold_at)->format('M d, Y') : '—' }}
                                 </td>
@@ -73,7 +94,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="8" class="text-center text-muted py-4">
+                                <td colspan="10" class="text-center text-muted py-4">
                                     <i class="bi bi-box-seam fs-1 d-block mb-2"></i>
                                     No products found
                                 </td>
@@ -99,6 +120,7 @@
 (function () {
     const form = document.getElementById('productSearchForm');
     const input = document.getElementById('productSearch');
+    const dateInput = document.getElementById('stockDate');
     let timer, controller;
 
     // Fetch the filtered list and swap only the results card, so the input keeps focus
@@ -106,6 +128,7 @@
         const url = new URL(form.action);
         const term = input.value.trim();
         if (term) url.searchParams.set('search', term);
+        if (dateInput.value) url.searchParams.set('date', dateInput.value);
 
         if (controller) controller.abort();
         controller = new AbortController();
@@ -125,6 +148,8 @@
         clearTimeout(timer);
         timer = setTimeout(search, 300);
     });
+
+    dateInput.addEventListener('change', search);
 
     form.addEventListener('submit', function (e) {
         e.preventDefault();

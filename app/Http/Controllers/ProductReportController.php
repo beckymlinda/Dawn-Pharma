@@ -8,6 +8,7 @@ use App\Models\PurchaseItem;
 use App\Models\SaleItem;
 use App\Models\StockAdjustment;
 use App\Models\StockHistory;
+use App\Services\StockLedger;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -35,7 +36,18 @@ class ProductReportController extends Controller
 
         $products = $query->paginate(25)->withQueryString();
 
-        return view('reports.products.index', compact('products'));
+        // Opening and closing stock of each listed product on the chosen day (default today)
+        $stockDay = $this->day($request->input('date')) ?? today();
+        $dailyStock = app(StockLedger::class)->forDay($products->pluck('id'), $stockDay);
+
+        // Stock that came in without a purchase (stock-in adjustments, first stock) counts as purchased
+        $stockIn = app(StockLedger::class)->stockInTotals($products->pluck('id'));
+        $products->getCollection()->each(function ($product) use ($stockIn) {
+            $product->stock_in = (float) ($stockIn[$product->id] ?? 0);
+            $product->total_purchased = (float) $product->total_purchased + $product->stock_in;
+        });
+
+        return view('reports.products.index', compact('products', 'stockDay', 'dailyStock'));
     }
 
     /**
@@ -46,7 +58,7 @@ class ProductReportController extends Controller
     {
         $from = $request->filled('from') ? Carbon::parse($request->input('from'))->startOfDay() : null;
         $to = $request->filled('to') ? Carbon::parse($request->input('to'))->endOfDay() : null;
-        $activeTab = in_array($request->input('tab'), ['sales', 'purchases', 'adjustments', 'movements', 'activity'])
+        $activeTab = in_array($request->input('tab'), ['sales', 'purchases', 'adjustments', 'movements', 'daily', 'activity'])
             ? $request->input('tab')
             : 'sales';
 
@@ -95,13 +107,61 @@ class ProductReportController extends Controller
             ->get()
             ->keyBy('day');
 
-        $purchases = $purchasesQuery
+        $purchaseRows = $purchasesQuery
             ->select('purchase_items.*', 'purchases.purchase_date as purchased_at')
             ->with(['purchase.user', 'purchase.supplier'])
-            ->orderByDesc('purchases.purchase_date')
-            ->orderByDesc('purchase_items.id')
-            ->paginate(25, ['*'], 'purchases_page')
-            ->appends($request->except('purchases_page') + ['tab' => 'purchases']);
+            ->get()
+            ->map(fn ($item) => (object) [
+                'at' => Carbon::parse($item->purchased_at),
+                'sort_id' => $item->id,
+                'kind' => 'purchase',
+                'reference' => $item->purchase->reference_no ?? null,
+                'purchase' => $item->purchase,
+                'supplier' => $item->purchase->supplier->name ?? null,
+                'status' => $item->purchase->status ?? null,
+                'quantity' => (float) $item->quantity,
+                'unit_cost' => (float) $item->unit_cost,
+                'line_total' => (float) $item->line_total,
+                'expiry' => $item->expiry_date ?? $item->exp_date,
+                'by' => $item->purchase->user->name ?? null,
+            ]);
+
+        // Stock in without a purchase record (stock-in adjustments, first stock) is a purchase too
+        $stockIn = collect(app(StockLedger::class)->stockIn([$product->id], $from, $to))
+            ->map(fn ($entry) => (object) [
+                'at' => $entry['at'],
+                'sort_id' => 0,
+                'kind' => $entry['kind'],
+                'reference' => $entry['note'],
+                'purchase' => null,
+                'supplier' => null,
+                'status' => 'received',
+                'quantity' => $entry['quantity'],
+                'unit_cost' => $entry['unit_cost'],
+                'line_total' => round($entry['quantity'] * $entry['unit_cost'], 2),
+                'expiry' => null,
+                'by' => $entry['user']->name ?? null,
+            ]);
+        foreach ($stockIn as $entry) {
+            $day = $entry->at->toDateString();
+            $row = $purchasesPerDay[$day] ?? (object) ['day' => $day, 'qty' => 0, 'amount' => 0];
+            $row->qty += $entry->quantity;
+            $row->amount += $entry->line_total;
+            $purchasesPerDay[$day] = $row;
+        }
+        $purchaseTotals->qty += $stockIn->sum('quantity');
+        $purchaseTotals->amount += $stockIn->sum('line_total');
+        $purchaseTotals->count += $stockIn->count();
+
+        // Newest first, 25 per page
+        $allPurchases = $purchaseRows->concat($stockIn)
+            ->sortByDesc(fn ($r) => sprintf('%s-%010d', $r->at->format('Y-m-d H:i:s'), $r->sort_id))
+            ->values();
+        $page = max(1, (int) $request->input('purchases_page', 1));
+        $purchases = (new \Illuminate\Pagination\LengthAwarePaginator(
+            $allPurchases->forPage($page, 25)->values(), $allPurchases->count(), 25, $page,
+            ['path' => $request->url(), 'pageName' => 'purchases_page']
+        ))->appends($request->except('purchases_page') + ['tab' => 'purchases']);
 
         // Stock adjustments
         $adjustments = $inRange(StockAdjustment::with('user')->where('product_id', $product->id), 'created_at')
@@ -125,12 +185,38 @@ class ProductReportController extends Controller
             ->paginate(25, ['*'], 'activity_page')
             ->appends($request->except('activity_page') + ['tab' => 'activity']);
 
+        // Daily stock: opening and closing for each day of the period (default the last 30 days)
+        // (never later than today, and at most a year at a time)
+        $dailyTo = $to && $to->lt(today()) ? $to->copy()->startOfDay() : today();
+        $dailyFrom = $from ? $from->copy()->startOfDay() : $dailyTo->copy()->subDays(29);
+        if ($dailyFrom->lt($dailyTo->copy()->subDays(365))) {
+            $dailyFrom = $dailyTo->copy()->subDays(365);
+        }
+        $dailyStock = $dailyFrom->lte($dailyTo)
+            ? (app(StockLedger::class)->daily([$product->id], $dailyFrom, $dailyTo)[$product->id] ?? [])
+            : [];
+
         $product->load(['category', 'brand', 'unit', 'supplier']);
 
         return view('reports.products.show', compact(
             'product', 'activeTab', 'sales', 'salesTotals', 'salesPerDay',
             'purchases', 'purchaseTotals', 'purchasesPerDay',
-            'adjustments', 'movements', 'activities'
+            'adjustments', 'movements', 'activities', 'dailyStock'
         ));
+    }
+
+    /** A Y-m-d date from the request, not later than today; null if missing or invalid. */
+    private function day(?string $value): ?Carbon
+    {
+        if (!$value) {
+            return null;
+        }
+        try {
+            $day = Carbon::parse($value)->startOfDay();
+        } catch (\Exception $e) {
+            return null;
+        }
+
+        return $day->gt(today()) ? today() : $day;
     }
 }

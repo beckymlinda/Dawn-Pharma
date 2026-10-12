@@ -205,11 +205,26 @@ class PurchaseController extends Controller
     public function destroy(Purchase $purchase)
     {
         // Reverse stock updates
-        $purchase->purchaseItems()->each(function ($item) {
+        $purchase->purchaseItems()->each(function ($item) use ($purchase) {
             $product = Product::find($item->product_id);
+            if (!$product) {
+                return;
+            }
             $product->stock -= $item->quantity;
             $product->current_stock -= $item->quantity;
             $product->save();
+
+            // Keep the stock history complete (daily stock is worked out from it)
+            StockHistory::create([
+                'product_id' => $product->id,
+                'type' => 'Stock Adjustment',
+                'quantity_change' => -$item->quantity,
+                'new_quantity' => $product->current_stock,
+                'unit_cost' => $item->unit_cost ?? null,
+                'date' => now()->toDateString(),
+                'reference_no' => $purchase->reference_no,
+                'notes' => 'Purchase ' . $purchase->reference_no . ' deleted by ' . (auth()->user()->name ?? 'unknown'),
+            ]);
         });
 
         $purchase->delete();
