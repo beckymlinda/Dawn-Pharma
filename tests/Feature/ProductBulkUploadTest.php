@@ -49,6 +49,21 @@ class ProductBulkUploadTest extends TestCase
         $this->assertSame(1, StockHistory::where('product_id', $p->id)->where('type', 'Opening Stock')->count());
     }
 
+    public function test_row_with_stock_but_no_supplier_category_brand_unit_or_expiry(): void
+    {
+        $this->upload(self::HEADER . "Plain Item,,,,500,12,,,,,,\n")
+            ->assertSessionHas('success', fn ($m) => str_contains($m, '1 created') && str_contains($m, '0 errors'));
+
+        $p = Product::where('name', 'Plain Item')->firstOrFail();
+        $this->assertNull($p->supplier_id);
+        $this->assertNull($p->category_id);
+        $this->assertNull($p->brand_id);
+        $this->assertNull($p->unit_id);
+        $this->assertNull($p->expiry_date);
+        $this->assertEquals(12, $p->current_stock);
+        $this->assertSame(1, StockHistory::where('product_id', $p->id)->where('type', 'Opening Stock')->count());
+    }
+
     public function test_excel_csv_with_bom_and_columns_in_another_order(): void
     {
         $csv = "\xEF\xBB\xBFSelling Price,Name,Current Stock,Purchase Price\n3000,Amoxicillin 250mg,40,1800\n";

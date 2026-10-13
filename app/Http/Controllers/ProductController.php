@@ -182,7 +182,7 @@ class ProductController extends Controller
 
                 // Create purchase
                 $purchase = Purchase::create([
-                    'supplier_id' => $data['supplier_id'],
+                    'supplier_id' => $data['supplier_id'] ?? null,
                     'business_location' => setting('system_name'),
                     'reference_no' => $referenceNo,
                     'purchase_date' => $purchaseDate,
@@ -198,7 +198,7 @@ class ProductController extends Controller
                     'product_id' => $product->id,
                     'quantity' => $purchaseQuantity,
                     'unit_cost' => $data['purchase_price'],
-                    'expiry_date' => $data['expiry_date'],
+                    'expiry_date' => $data['expiry_date'] ?? null,
                     'discount_percent' => 0,
                     'tax_percent' => 0,
                     'line_total' => $totalCost,
